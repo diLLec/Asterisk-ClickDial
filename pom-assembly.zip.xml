@@ -1,0 +1,37 @@
+<assembly>
+  <id>clickdial-win32</id>
+  <formats>
+    <format>zip</format>
+  </formats>
+  
+  
+  <!-- main fileset - there will be no other :-) -->
+  <fileSets>
+  	
+  	<!-- include the ClickDial buildfile -->
+	<!-- include the libraries and the native thingies -->
+    <fileSet>
+      <directory>target</directory>
+      <outputDirectory></outputDirectory>
+      <includes>
+        <include>${pom.artifactId}-${pom.version}*.jar</include>
+        <include>${pom.artifactId}-${pom.version}*.exe</include>
+      </includes>
+    
+    </fileSet>
+    <fileSet>
+      <directory>target/classes</directory>
+      <outputDirectory></outputDirectory>
+      <includes>
+        <include>lib</include>
+        <include>lib/**</include>
+        <include>native</include>
+        <include>native/**</include>
+        <include>conf</include>
+        <include>conf/**</include>
+        <include>log</include>
+      </includes>
+    </fileSet>
+  </fileSets>
+</assembly>
+

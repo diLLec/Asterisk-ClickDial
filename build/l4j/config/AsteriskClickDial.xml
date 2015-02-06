@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch4jConfig>
+  <dontWrapJar>false</dontWrapJar>
+  <headerType>gui</headerType>
+  <jar>${project.build.directory}\${project.build.finalName}.jar</jar>
+  <outfile>${project.build.directory}\${project.build.finalName}.exe</outfile>
+  <errTitle></errTitle>
+  <cmdLine></cmdLine>
+  <chdir>.</chdir>
+  <priority>normal</priority>
+  <downloadUrl>http://java.com/download</downloadUrl>
+  <supportUrl></supportUrl>
+  <stayAlive>false</stayAlive>
+  <restartOnCrash>false</restartOnCrash>
+  <manifest></manifest>
+  <icon>${project.build.directory}\classes\lib\icons\tray\asterisk-tray.ico</icon>
+  <singleInstance>
+    <mutexName>AsteriskClickDial</mutexName>
+    <windowTitle>AsteriskClickDial</windowTitle>
+  </singleInstance>
+  <classPath>
+    <mainClass>de.neue_phase.asterisk.ClickDial.boot.Bootstrap</mainClass>
+    <cp>lib/*</cp>
+  </classPath>
+  <jre>
+    <path></path>
+    <bundledJre64Bit>false</bundledJre64Bit>
+    <bundledJreAsFallback>false</bundledJreAsFallback>
+    <minVersion>1.8.0</minVersion>
+    <maxVersion></maxVersion>
+    <jdkPreference>jreOnly</jdkPreference>
+    <runtimeBits>64/32</runtimeBits>
+    <opt>-Djava.library.path=native/</opt>
+    <opt>-Dlog4j.configuration=conf/log4j.xml</opt>
+  </jre>
+</launch4jConfig>
