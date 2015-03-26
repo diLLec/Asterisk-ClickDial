@@ -1,4 +1,4 @@
-package de.neue_phase.asterisk.ClickDial.util.events;
+package de.neue_phase.asterisk.ClickDial.eventbus.events;
 
 /*
  * ClickDialEvent

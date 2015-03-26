@@ -1,11 +1,7 @@
-package de.neue_phase.asterisk.ClickDial.util.events;
-
-import java.lang.reflect.Method;
+package de.neue_phase.asterisk.ClickDial.eventbus.events;
 
 public class FindContactEvent extends ClickDialEvent {
     private String searchString;
-    private final String listenerEventFunction = "handleFindContactsEvent";
-
     public FindContactEvent (String searchString) {
         super(ClickDialEvent.Type.ClickDial_FindContactEvent);
         this.searchString = searchString;
