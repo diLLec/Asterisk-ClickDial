@@ -2,7 +2,7 @@ package de.neue_phase.asterisk.ClickDial.settings;
 
 import de.neue_phase.asterisk.ClickDial.constants.SettingsConstants;
 import de.neue_phase.asterisk.ClickDial.controller.exception.InitException;
-import de.neue_phase.asterisk.ClickDial.settings.extractModels.ExtractAsteriskManagerWebinterfaceAuthData;
+import de.neue_phase.asterisk.ClickDial.settings.extractModels.ExtractWebserviceAuthData;
 import de.neue_phase.asterisk.ClickDial.settings.extractModels.ISettingsExtractModel;
 import org.apache.log4j.Logger;
 
@@ -203,7 +203,7 @@ public class SettingsWebserviceKeystore {
      * @return extract (auth Data)
      */
     public ISettingsExtractModel getWebserviceAuthData () {
-        return new ExtractAsteriskManagerWebinterfaceAuthData (this.getWebserviceUsername (),
+        return new ExtractWebserviceAuthData (this.getWebserviceUsername (),
                                                                this.getWebservicePassword ());
     }
 }

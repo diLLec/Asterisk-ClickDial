@@ -36,9 +36,13 @@ import de.neue_phase.asterisk.ClickDial.widgets.util.CallWindowWindowPlacer;
 
 public class CallWindow {
 
-	/* native methods, which are implemented in the loaded
-	 * dll (windows) or so (linux) called "CallWindowImpl"
-	 */
+
+    /*
+        For ideas how animated call windows can be implemented, please see:
+            http://mvnrepository.com/artifact/org.pushing-pixels/trident
+            http://www.pushing-pixels.org/2009/06/24/trident-part-7-parallel-timelines-in-swing-and-swt.html
+            https://kenai.com/projects/granite/sources/granite/content/src/org/pushingpixels/granite/GraniteUtils.java?rev=8
+      */
 	
 	/**
 	 * initialize the hwnd ...

@@ -1,32 +1,26 @@
 package de.neue_phase.asterisk.ClickDial.serviceInterfaces;
 
-import java.io.IOException;
-import java.util.ArrayList;
-
-import de.neue_phase.asterisk.ClickDial.controller.CallWindowController;
-import de.neue_phase.asterisk.ClickDial.controller.listener.InsufficientServiceAuthenticationDataListener;
-import de.neue_phase.asterisk.ClickDial.controller.listener.ServiceInterfaceProblemListener;
+import com.google.common.eventbus.Subscribe;
+import de.neue_phase.asterisk.ClickDial.eventbus.EventBusFactory;
+import de.neue_phase.asterisk.ClickDial.eventbus.events.ManagerInsufficientAuthDataEvent;
+import de.neue_phase.asterisk.ClickDial.eventbus.events.ManagerProblemEvent;
+import de.neue_phase.asterisk.ClickDial.eventbus.events.ManagerProblemResolveEvent;
 import de.neue_phase.asterisk.ClickDial.settings.extractModels.ExtractAsteriskManagerInterfaceAuthData;
-import de.neue_phase.asterisk.ClickDial.util.Dispatcher;
-import de.neue_phase.asterisk.ClickDial.util.events.ClickDialEvent;
-import de.neue_phase.asterisk.ClickDial.util.events.SettingsUpdatedEvent;
-import de.neue_phase.asterisk.ClickDial.util.listener.SettingsUpdatedListener;
+import de.neue_phase.asterisk.ClickDial.eventbus.events.SettingsUpdatedEvent;
+import org.apache.http.auth.AUTH;
 import org.apache.log4j.Logger;
-import org.asteriskjava.live.CallerId;
+
 import org.asteriskjava.manager.AuthenticationFailedException;
 import org.asteriskjava.manager.ManagerConnection;
 import org.asteriskjava.manager.ManagerConnectionFactory;
 import org.asteriskjava.manager.ManagerConnectionState;
-import org.asteriskjava.manager.TimeoutException;
-import org.asteriskjava.manager.action.OriginateAction;
-import org.asteriskjava.manager.response.ManagerResponse;
 
 import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants;
-import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants.ControllerTypes;
-import de.neue_phase.asterisk.ClickDial.constants.InterfaceConstants.SettingsImages;
 import de.neue_phase.asterisk.ClickDial.constants.SettingsConstants.SettingsTypes;
 import de.neue_phase.asterisk.ClickDial.controller.exception.InitException;
-import de.neue_phase.asterisk.ClickDial.widgets.UserActionBox;
+
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Asterisk Connection controller oversees the managed asterisk connection
@@ -35,88 +29,122 @@ import de.neue_phase.asterisk.ClickDial.widgets.UserActionBox;
  * @author Michael Konietzny <Michael.Konietzny@neue-phase.de>
  */
 
-public class AsteriskManagerInterface implements IServiceInterface, SettingsUpdatedListener {
+public class AsteriskManagerInterface implements IServiceInterface, Runnable {
 
-	private enum ConnectionState {
+	private  enum ConnectionState {
 		NOT_CONNECTED,
-		CONNECTED,
+		CONNECTED_AUTH_FAIL,
 		AUTHENTICATED
 	}
 
-	private ConnectionState	authState						= ConnectionState.NOT_CONNECTED;
-	private ControllerConstants.ServiceInterfaceTypes type = ControllerConstants.ServiceInterfaceTypes.AsteriskManagerInterface;
+    protected Thread        interfaceCheckThread            = null;
+	protected AtomicBoolean problemTriggered				= new AtomicBoolean (false);
+	protected AtomicBoolean shutdownInterface				= new AtomicBoolean (false);
+	private volatile ConnectionState	internalState		= ConnectionState.NOT_CONNECTED;
+	private ControllerConstants.ServiceInterfaceTypes type 	= ControllerConstants.ServiceInterfaceTypes.AsteriskManagerInterface;
 	private ManagerConnection 			mcon 				= null;
 	private ManagerConnectionFactory 	mconfact 			= null;
 	private final Logger log 								= Logger.getLogger(this.getClass());
-	private Dispatcher dispatcher							= null;
 	private Integer authenticationTry 						= 0;
 	private Integer problemTry		 						= 0;
-	protected InsufficientServiceAuthenticationDataListener insufficentAuthDatalistener = null;
-	protected ServiceInterfaceProblemListener problemListener = null;
 
-	public AsteriskManagerInterface (Dispatcher dispatcher) {
-		this.dispatcher = dispatcher;
-		this.dispatcher.addEventListener (ClickDialEvent.Type.ClickDial_SettingsUpdatedEvent, this);
+	public AsteriskManagerInterface () {
+        EventBusFactory.getThradPerTaskEventBus ().register (this);
 	}
 
 	/**
-	 *
-	 * @param listener The listener we should inform when the webservice misses auth data
+	 * trigger events to gather settings
 	 */
-	@Override
-	public void setInsufficientServiceAuthenticationDataListener (InsufficientServiceAuthenticationDataListener listener) {
-		this.insufficentAuthDatalistener = listener;
+	private void reconnect () {
+        log.debug ("Asterisk Manager Connection reconnecting.");
+
+		ManagerInsufficientAuthDataEvent event = new ManagerInsufficientAuthDataEvent (this.type,
+																					   authenticationTry);
+        EventBusFactory.getDisplayThreadEventBus ().post (event);
+		ExtractAsteriskManagerInterfaceAuthData authData = event.getReponse (3000);
+
+		if (authData == null)
+            return;
+
+		this.createConnection (authData.getConnectData ().getHostname (),
+							   authData.getConnectData ().getPort (),
+							   authData.getUser (),
+							   authData.getPassword (),
+							   authData.getTimeout ());
 	}
 
-	@Override
-	public void setServiceInterfaceProblemListener (ServiceInterfaceProblemListener listener) {
-		this.problemListener = listener;
+
+	/**
+	 * If the webservice
+	 * @param problemType
+	 */
+	private void triggerServiceInterfaceProblem(ControllerConstants.ServiceInterfaceProblems problemType) {
+        log.error ("Manager Connection Problem detected.");
+        EventBusFactory.getDisplayThreadEventBus ().post (new ManagerProblemEvent (this.type,
+                                                                                   problemType,
+                                                                                   problemTry++)
+        );
 	}
 
 	/**
-	 * trigger all listeners for settings
+	 * get the type of this ServiceInterface
+	 * @return the type
 	 */
-	private void triggerInsufficientServiceAuthenticationDataListeners () {
-		ExtractAsteriskManagerInterfaceAuthData authData = null;
-
-		do {
-			if ((authData = (ExtractAsteriskManagerInterfaceAuthData) insufficentAuthDatalistener.startSettingsProducer (this.type,
-																														 authenticationTry)) != null) {
-				this.createConnection (authData.getConnectData ().getHostname (),
-									   authData.getConnectData ().getPort (),
-									   authData.getUser (),
-									   authData.getPassword (),
-									   authData.getTimeout ());
-
-				if (this.authState == ConnectionState.AUTHENTICATED)
-					this.authenticationTry = 0;
-
-				else if (this.authState == ConnectionState.NOT_CONNECTED) {
-					this.triggerServiceInterfaceProblemListener (ControllerConstants.ServiceInterfaceProblems.ConnectionProblem); // this just informs the user that there is a problem
-					authenticationTry += 1;
-				}
-				else if (this.authState == ConnectionState.CONNECTED)
-					authenticationTry += 1; // next try
-
-			}
-		} while (authenticationTry < 2 && this.authState != ConnectionState.AUTHENTICATED);
-
-	}
-
-	private void triggerServiceInterfaceProblemListener(ControllerConstants.ServiceInterfaceProblems problemType) {
-		this.problemListener.handleServiceInterfaceContinueOrNot (this.type, problemType, problemTry++);
-	}
-
 	@Override
 	public ControllerConstants.ServiceInterfaceTypes getName () {
 		return type;
 	}
 
-	@Override
-	public void handleSettingsUpdatedEvent (SettingsUpdatedEvent event) {
-		if (event.getUpdatedTypes ().contains (SettingsTypes.asterisk))
-			this.triggerInsufficientServiceAuthenticationDataListeners ();
+	/**
+	 * @param event Event when settings got updated to recreate the connection
+	 */
+    @Subscribe public void handleSettingsUpdatedEvent (SettingsUpdatedEvent event) {
+		if (event.getUpdatedTypes ().contains (SettingsTypes.asterisk)) {
+			this.closeDown ();
+			this.reconnect ();
+		}
 	}
+
+    /**
+     * check connection each 2 seconds
+     */
+    @Override
+    public void run () {
+
+        Integer discoStateIntervals = 0;
+
+        do {
+            log.debug ("ManagerInterface: internaleState = " + internalState.toString () + " mcon state = " + mcon.getState ().toString () + " discoIntervals " + discoStateIntervals);
+            if (mcon.getState () == ManagerConnectionState.DISCONNECTED) {
+                discoStateIntervals += 1;
+
+                if (discoStateIntervals % 10 == 0) {
+                    problemTriggered.set (true);
+                    reconnect ();
+                }
+            }
+
+            else if (mcon.getState () == ManagerConnectionState.RECONNECTING) {
+                if (!problemTriggered.get ()) {
+                    problemTriggered.set (true);
+                    triggerServiceInterfaceProblem (ControllerConstants.ServiceInterfaceProblems.ConnectionProblem);
+                }
+            }
+
+            else if (mcon.getState () == ManagerConnectionState.CONNECTED) {
+                if (problemTriggered.get ()) {
+                    problemTriggered.set (false);
+                    discoStateIntervals = 0;
+                    internalState = ConnectionState.AUTHENTICATED;
+                    EventBusFactory.getDisplayThreadEventBus ().post (new ManagerProblemResolveEvent ());
+                }
+            }
+
+            try {
+                TimeUnit.SECONDS.sleep (2);
+            } catch (InterruptedException e) {}
+        } while (!shutdownInterface.get ());
+    }
 
 	/**
 	 * startUp Routine of AsteriskConnectionController
@@ -125,14 +153,24 @@ public class AsteriskManagerInterface implements IServiceInterface, SettingsUpda
 	@Override 
 	public void startUp () throws InitException {
 		log.debug ("AsteriskManagerInterface startup()");
-		this.triggerInsufficientServiceAuthenticationDataListeners ();
+        this.reconnect ();
 
-		if (this.mcon.getState () != ManagerConnectionState.CONNECTED)
-			throw new InitException ("AsteriskManagerWebservice could not authenticate with the given credentials");
+        // start the checker thread
+        interfaceCheckThread = new Thread(this);
+        interfaceCheckThread.start ();
+
+		if (this.mcon.getState () != ManagerConnectionState.CONNECTED) {
+            triggerServiceInterfaceProblem (ControllerConstants.ServiceInterfaceProblems.ConnectionProblem);
+            throw new InitException ("AsteriskManagerWebservice could not be established");
+        }
+
 	}
 
 	@Override
-	public void shutdown () {
+	public synchronized void shutdown () {
+		this.shutdownInterface.set (true);
+        interfaceCheckThread.interrupt ();
+
 		try {
 			this.mcon.logoff ();
 		} catch (Exception e) {
@@ -141,15 +179,22 @@ public class AsteriskManagerInterface implements IServiceInterface, SettingsUpda
 	}
 
 	/**
+	 * close every resource
+	 */
+	public synchronized void closeDown () {
+		this.shutdown ();
+	}
+
+	/**
 	 *
-	 * @param hostname
-	 * @param port
-	 * @param user
-	 * @param password
-	 * @param timeout
-	 * @return
+	 * @param hostname Hostname to Connect
+	 * @param port Port (TCP)
+	 * @param user Username to use for the connect
+	 * @param password Passwort to use for the connect
+	 * @param timeout Time to wait on packets to be answered
 	 */
 	private void createConnection (String hostname, Integer port, String user, String password, Integer timeout) {
+        log.debug ("Creating connection to "+ hostname);
 		mconfact = new ManagerConnectionFactory(hostname,
 												port,
 												user,
@@ -157,18 +202,17 @@ public class AsteriskManagerInterface implements IServiceInterface, SettingsUpda
 
 		mcon 	 = mconfact.createManagerConnection();
 		mcon.setSocketTimeout (timeout);
-
 		try {
 			mcon.login();
 			log.debug("Manager Connection established");
-			this.authState = ConnectionState.AUTHENTICATED;
+			problemTriggered.set (false);
 		}
 		catch (AuthenticationFailedException e) {
-			this.authState = ConnectionState.CONNECTED;
+            log.debug("Manager Connection authentication failed");
+			this.internalState = ConnectionState.CONNECTED_AUTH_FAIL;
 		}
 		catch (Exception e) {
 			log.debug("Manager Connection could not be established", e);
-			this.authState = ConnectionState.NOT_CONNECTED;
 		}
 	}
 
@@ -188,16 +232,5 @@ public class AsteriskManagerInterface implements IServiceInterface, SettingsUpda
 		return mcon.getUsername();
 	}
 
-	/**
-	 * close every resource
-	 */
-	public void closeDown () {
-		if (getState() == ManagerConnectionState.CONNECTED)
-			mcon.logoff();
-
-		mcon	 = null;
-		mconfact = null;
-		
-	}
 
 }

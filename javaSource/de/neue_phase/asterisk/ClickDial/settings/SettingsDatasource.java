@@ -23,7 +23,7 @@ public class SettingsDatasource extends SettingsAbstractMaster {
 		super.initializeSettings();
 		SettingsElement tmp;
 
-		tmp = new SettingsElement("xml_enabled", "XML Datasource", "", SettingsConstants.SettingsElementType.checkbox);
+		tmp = new SettingsElement("webservice_enabled", "Webservice Datasource", "", SettingsConstants.SettingsElementType.checkbox);
 		settings.put(tmp.getName(), tmp);
 		
 		tmp = new SettingsElement("outlook_enabled", "Local Outlook Datasource", "", SettingsConstants.SettingsElementType.checkbox);

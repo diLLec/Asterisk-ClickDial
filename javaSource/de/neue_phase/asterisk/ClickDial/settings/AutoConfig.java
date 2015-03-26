@@ -3,13 +3,12 @@ package de.neue_phase.asterisk.ClickDial.settings;
 import com.google.common.collect.MapDifference;
 import com.google.common.collect.Maps;
 import de.neue_phase.asterisk.ClickDial.constants.SettingsConstants;
+import de.neue_phase.asterisk.ClickDial.eventbus.EventBusFactory;
 import de.neue_phase.asterisk.ClickDial.serviceInterfaces.AsteriskManagerWebservice;
-import de.neue_phase.asterisk.ClickDial.util.Dispatcher;
-import de.neue_phase.asterisk.ClickDial.util.events.SettingsUpdatedEvent;
+import de.neue_phase.asterisk.ClickDial.eventbus.events.SettingsUpdatedEvent;
 import org.apache.log4j.Logger;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -20,22 +19,21 @@ public class AutoConfig {
     private Boolean shutdown                            = false;
     protected final Logger log 				            = Logger.getLogger(this.getClass());
     private Map<String, String> autoConfigData          = null;
-    private Dispatcher dispatcher                       = null;
 
     /**
      * constructor
      * @param holder
      * @param webservice
      */
-    public AutoConfig (SettingsHolder holder, AsteriskManagerWebservice webservice, Dispatcher dispatcher) {
+    public AutoConfig (SettingsHolder holder, AsteriskManagerWebservice webservice) {
         this.holder     = holder;
         this.webservice = webservice;
-        this.dispatcher = dispatcher;
     }
 
     /**
      *
      * @return AutoConfig call was successful (note: it was also successful if we got data from webservice but nothing has changed)
+     *
      */
     public Boolean checkAutoConfigData () {
         Map<String, String> newAutoConfigData = this.webservice.getAutoConfigurationData ();
@@ -88,7 +86,7 @@ public class AutoConfig {
         }
 
         if (updatedGroups.size () > 0)
-            dispatcher.dispatchEvent (new SettingsUpdatedEvent (updatedGroups)); // inform any consumer who is interested in updated settings.
+            EventBusFactory.getThradPerTaskEventBus ().post (new SettingsUpdatedEvent (updatedGroups));
     }
 
 

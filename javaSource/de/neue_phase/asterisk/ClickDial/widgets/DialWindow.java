@@ -1,28 +1,23 @@
 package de.neue_phase.asterisk.ClickDial.widgets;
 
 import java.io.File;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.log4j.Logger;
 import org.eclipse.jface.bindings.keys.KeyStroke;
 import org.eclipse.jface.bindings.keys.ParseException;
 import org.eclipse.jface.fieldassist.*;
+import org.eclipse.jface.resource.FontDescriptor;
 import org.eclipse.swt.SWT;
-import org.eclipse.swt.graphics.Image;
-import org.eclipse.swt.graphics.ImageData;
-import org.eclipse.swt.graphics.Point;
-import org.eclipse.swt.graphics.Rectangle;
-import org.eclipse.swt.graphics.Region;
-import org.eclipse.swt.widgets.Display;
-import org.eclipse.swt.widgets.Event;
-import org.eclipse.swt.widgets.Listener;
-import org.eclipse.swt.widgets.Menu;
-import org.eclipse.swt.widgets.MenuItem;
-import org.eclipse.swt.widgets.Shell;
-import org.eclipse.swt.widgets.Text;
+import org.eclipse.swt.events.*;
+import org.eclipse.swt.graphics.*;
+import org.eclipse.swt.widgets.*;
 
 import de.neue_phase.asterisk.ClickDial.constants.InterfaceConstants;
 import de.neue_phase.asterisk.ClickDial.boot.Bootstrap;
 import de.neue_phase.asterisk.ClickDial.controller.DialWindowController;
+
+import javax.tools.Tool;
 
 /**
  * the dial window is the short widget, which will take numbers
@@ -40,7 +35,8 @@ public class DialWindow {
 	private ClickDialContentProposalAdapter  dialAreaAutocompleteAdapter = null;
 	private DialWindowController	ctrl 					= null;
 	private Menu 					rightClickMenu			= null;
-	private MenuItem 				connectionState			= null;
+	private MenuItem 				managerConnectionState	= null;
+    private MenuItem 				webserviceConnectionState	= null;
 	
 	/* the logging facility */
 	private final Logger    log 				= Logger.getLogger(this.getClass());
@@ -54,6 +50,8 @@ public class DialWindow {
 
 		cutRegionFromImage ();
 		addTextArea ();
+
+        shell.addTraverseListener (ctrl);
 	}
 	
 	/**
@@ -78,7 +76,11 @@ public class DialWindow {
 	
 	private void addTextArea () {
 		/* create the text area where we can dial */
-		dialArea = new Text(this.shell, SWT.APPLICATION_MODAL);
+        dialArea = new Text(this.shell, SWT.APPLICATION_MODAL);
+        FontDescriptor boldDescriptor = FontDescriptor.createFrom(dialArea.getFont()).setHeight (6).setStyle (SWT.BOLD);
+        Font boldFont = boldDescriptor.createFont(dialArea.getDisplay());
+        dialArea.setFont( boldFont );
+
 		dialArea.setLocation(60, 18);
 		dialArea.setSize(150, 14);
 		dialArea.setBackground(InterfaceConstants.DialWindowBackground);
@@ -102,6 +104,10 @@ public class DialWindow {
 
 	}
 
+    /**
+     * update the proposal window with entries
+     * @param proposals list of new proposals
+     */
 	public void updateAutocompleteProposals (String[] proposals) {
 		for (int i=0; i < proposals.length; i++)
 			log.debug("new proposal "+i+": " + proposals[i]);
@@ -207,11 +213,8 @@ public class DialWindow {
 		if (rightClickMenu == null) {
 			/* if not constructed yet - construct it */
 			rightClickMenu = new Menu (shell);
-			connectionState = new MenuItem(rightClickMenu, SWT.PUSH);
 
 			MenuItem item;
-			item = new MenuItem(rightClickMenu, SWT.SEPARATOR);
-
 			item = new MenuItem(rightClickMenu, SWT.PUSH);
 			item.setText("open configuration");
 			item.addSelectionListener(ctrl);
@@ -225,25 +228,6 @@ public class DialWindow {
 			item.addSelectionListener(ctrl);
 			item.setText("exit");
 		}
-		
-		File f = new File(InterfaceConstants.SettingsTypeIcons_Path +  
-						  ctrl.getAsteriskConnectionStageIcon() + 
-						  InterfaceConstants.SettingsTypeIcons_Suffix);
-		
-		if (f.exists())
-			connectionState.setImage(new Image(displayRef, f.getPath()));
-		
-		connectionState.setText(ctrl.getAsteriskConnectionState());
-
-		File f2 = new File(InterfaceConstants.SettingsTypeIcons_Path +
-								  ctrl.getWebserviceConnectionStateIcon () +
-								  InterfaceConstants.SettingsTypeIcons_Suffix);
-
-		if (f2.exists())
-			connectionState.setImage(new Image(displayRef, f2.getPath()));
-
-		connectionState.setText(ctrl.getWebserviceConnectionState());
-
 		
 		/* set the position and make it visible */
 		rightClickMenu.setLocation(pos.x, pos.y);
@@ -270,19 +254,77 @@ public class DialWindow {
 	 * close down routine
 	 */
 	public void dispose () {
-		rightClickMenu.dispose();
-		connectionState.dispose();
-		shell.dispose();
+		if (! rightClickMenu.isDisposed ())
+            rightClickMenu.dispose();
+
+        if (! webserviceConnectionState.isDisposed ())
+            webserviceConnectionState.dispose();
+
+        if (!managerConnectionState.isDisposed ())
+            managerConnectionState.dispose ();
+
+        if (!shell.isDisposed ())
+            shell.dispose();
 	}
 
 	/**
 	 * toggle the shell hide/show
 	 */
 	public void toggleHideShow () {
-		shell.setVisible( ! shell.isVisible() );
-		if (shell.isVisible())
-			shell.setFocus();
+
+        if (shell.isVisible ()) {
+            log.debug ("shell is not focus and visible => set focus");
+            shell.forceActive ();
+        } else {
+            log.debug ("shell is not visible => set visible");
+            shell.setVisible (true);
+            shell.setFocus ();
+        }
+
 	}
 
+    /**
+     *
+     * @return yes/no
+     */
+    public Boolean isDialAreaInFocus () {
+        return this.dialArea.isFocusControl ();
+    }
+
+    /**
+     * format dial area red and insert an error balloon on it
+     */
+    public void errorOnDialArea (String message) {
+
+        Color red   = new Color (this.displayRef, 255, 0, 0);
+        Color white = new Color (this.displayRef, 255, 255, 255);
+
+        dialArea.setBackground (red);
+        ToolTip tip = new ToolTip (shell, SWT.BALLOON);
+        tip.setMessage (message);
+        Point loc = dialArea.toDisplay(dialArea.getLocation());
+        tip.setLocation (loc.x, loc.y);
+        tip.setVisible (true);
+
+        dialArea.addFocusListener (new FocusListener () {
+            @Override
+            public void focusGained (FocusEvent focusEvent) {
+                dialArea.setBackground (white);
+                tip.setVisible (false);
+                dialArea.removeFocusListener (this);
+            }
+
+            @Override public void focusLost (FocusEvent focusEvent) {}
+        });
+    }
+
+    /**
+     * set the "Enabled" state of the dialarea always to the exact opposite state
+     * which it has currently
+     */
+    public void toggleDialAreaState () {
+        dialArea.setEnabled (!dialArea.getEnabled ());
+        dialArea.setEditable (!dialArea.getEditable ());
+    }
 
 }
