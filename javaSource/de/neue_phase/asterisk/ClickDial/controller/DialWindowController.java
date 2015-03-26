@@ -1,29 +1,35 @@
 package de.neue_phase.asterisk.ClickDial.controller;
 
 import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 
+import com.google.common.eventbus.Subscribe;
+import de.neue_phase.asterisk.ClickDial.controller.util.AsteriskCallerId;
+import de.neue_phase.asterisk.ClickDial.eventbus.EventBusFactory;
+import de.neue_phase.asterisk.ClickDial.eventbus.events.ExecuteCTICallEvent;
 import de.neue_phase.asterisk.ClickDial.serviceInterfaces.AsteriskManagerInterface;
 import de.neue_phase.asterisk.ClickDial.serviceInterfaces.AsteriskManagerWebservice;
-import de.neue_phase.asterisk.ClickDial.util.events.ClickDialEvent;
+import org.asteriskjava.live.CallerId;
 import org.eclipse.jface.fieldassist.*;
 
 import de.neue_phase.asterisk.ClickDial.datasource.Contact;
-import de.neue_phase.asterisk.ClickDial.util.Dispatcher;
-import de.neue_phase.asterisk.ClickDial.util.events.FindContactEvent;
-import de.neue_phase.asterisk.ClickDial.util.events.FoundContactEvent;
-import de.neue_phase.asterisk.ClickDial.util.listener.FoundContactEventListener;
+import de.neue_phase.asterisk.ClickDial.eventbus.events.FindContactEvent;
+import de.neue_phase.asterisk.ClickDial.eventbus.events.FoundContactEvent;
 import org.apache.log4j.Logger;
 import org.asteriskjava.manager.ManagerConnectionState;
-import org.eclipse.swt.events.SelectionEvent;
-import org.eclipse.swt.events.SelectionListener;
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.events.*;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.MenuItem;
 
 import de.neue_phase.asterisk.ClickDial.constants.*;
 import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants.ControllerTypes;
+import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants.ServiceInterfaceTypes;
 import de.neue_phase.asterisk.ClickDial.controller.exception.InitException;
 import de.neue_phase.asterisk.ClickDial.settings.SettingsHolder;
 import de.neue_phase.asterisk.ClickDial.widgets.DialWindow;
+
+import javax.xml.ws.Service;
 
 /**
  * The DialWindow widget is the main window in this application.
@@ -35,26 +41,25 @@ import de.neue_phase.asterisk.ClickDial.widgets.DialWindow;
  */
 
 public class DialWindowController extends ControllerBaseClass 
-implements FoundContactEventListener, IContentProposalListener, SelectionListener, IContentProposalListener2
+implements IContentProposalListener, SelectionListener, IContentProposalListener2, TraverseListener
 {
 
-	private Display     displayRef 			= Display.getCurrent();
-	private Dispatcher  dispatcherRef		= null;
-	private DialWindow	dialWindow 			= null;
+    private AtomicBoolean originatedCallGoing   = new AtomicBoolean (false);
+	private Display     displayRef 			    = Display.getCurrent();
+	private DialWindow	dialWindow 			    = null;
 
-	private	Boolean findProposalRunning		= false;
+	private AtomicBoolean findProposalRunning	= new AtomicBoolean (false);
 	
-	private final Logger    log 			= Logger.getLogger(this.getClass());
+	private final Logger    log 			    = Logger.getLogger(this.getClass());
 	
-	private AsteriskManagerInterface asCtrl = null;
-	private AsteriskManagerWebservice asWeb = null;
+	private AsteriskManagerInterface asCtrl     = null;
+	private AsteriskManagerWebservice asWeb     = null;
 	
-	public DialWindowController(SettingsHolder settingsRef, BaseController b, Dispatcher dispatcherRef) {
+	public DialWindowController(SettingsHolder settingsRef, BaseController b) {
 		super(settingsRef, b);
 		type		= ControllerTypes.DialWindow;
-		asCtrl = (AsteriskManagerInterface) bC.getServiceInterface (ControllerConstants.ServiceInterfaceTypes.AsteriskManagerInterface);
-		asWeb  = (AsteriskManagerWebservice) bC.getServiceInterface (ControllerConstants.ServiceInterfaceTypes.Webservice);
-		this.dispatcherRef = dispatcherRef;
+		asCtrl = (AsteriskManagerInterface) bC.getServiceInterface (ServiceInterfaceTypes.AsteriskManagerInterface);
+		asWeb  = (AsteriskManagerWebservice) bC.getServiceInterface (ServiceInterfaceTypes.Webservice);
 	}
 	
 	public void startUp () throws InitException  {
@@ -62,16 +67,47 @@ implements FoundContactEventListener, IContentProposalListener, SelectionListene
 		
 		dialWindow = new DialWindow(displayRef, this);
 		dialWindow.startMe();
-		dispatcherRef.addEventListener (ClickDialEvent.Type.ClickDial_FoundContactEvent, this);
+
+        EventBusFactory.getDisplayThreadEventBus ().register (this); // for FoundContactEvents
 	}
 
+    @Override
+    public void keyTraversed (TraverseEvent traverseEvent) {
+        log.debug ("traverse Key typed " + traverseEvent.detail + " return: " + SWT.TRAVERSE_RETURN);
+        if (traverseEvent.detail == SWT.TRAVERSE_RETURN && dialWindow.isDialAreaInFocus ()) {
+            originateCall (dialWindow.getText ());
+        }
+    }
 
-	@Override
+    /**
+     * Originate a call to the users phone and after connect to another user
+     * @param input A number, name - something we can dial to
+     */
+    private void originateCall (String input) {
+        log.debug ("User wants to dial out to: " + input);
+        AsteriskCallerId cid = AsteriskCallerId.calleridFromString (input);
+        if (cid == null)
+            dialWindow.errorOnDialArea ("Invalid target for call origination.");
+        else {
+            log.debug ("Dial Out Data as CallerId: " + cid.toString ());
+            // disable input
+            dialWindow.toggleDialAreaState ();
+
+            // trigger call origination by event
+            ExecuteCTICallEvent callEvent = new ExecuteCTICallEvent (cid);
+            EventBusFactory.getThradPerTaskEventBus ().post (callEvent);
+            Boolean response = callEvent.getReponse (ServiceConstants.WebserviceTimeout);
+            if (response) {
+                originatedCallGoing.set(true);
+                // TODO: show something in the GUI that indicates that an outgoing call is on the way
+            }
+            dialWindow.toggleDialAreaState ();
+        }
+    }
+    @Override
 	public void proposalAccepted (IContentProposal iContentProposal) {
 		log.debug ("proposalAccepted");
-		synchronized (this.findProposalRunning) {
-			this.findProposalRunning = false;
-		}
+        findProposalRunning.set(false);
 	}
 
 	@Override
@@ -82,36 +118,36 @@ implements FoundContactEventListener, IContentProposalListener, SelectionListene
 	@Override
 	public void proposalPopupOpened (ContentProposalAdapter contentProposalAdapter) {
 		log.debug ("proposalPopupOpened");
-		synchronized (this.findProposalRunning)
-		{
-			if (!this.findProposalRunning) {
-				dispatcherRef.dispatchEvent (new FindContactEvent (this.dialWindow.getText ()));
-				this.findProposalRunning = true;
-			}
-		}
-	}
 
+        if (!findProposalRunning.get ()) {
+            EventBusFactory.getThradPerTaskEventBus ().post (new FindContactEvent (this.dialWindow.getText ()));
+            findProposalRunning.set (true);
+        }
+    }
 
-	public void handleFoundContactEvent (FoundContactEvent event) {
+    /**
+     * @param event the event that contains the resultset
+     */
+	@Subscribe public void handleFoundContactEvent (FoundContactEvent event) {
 		ArrayList<Contact> contacts = event.getContacts ();
-		String[] newProposals = null;
+		String[] newProposals;
+
+        log.debug ("found "+contacts.size ()+" proposals");
 
 		if (contacts.size () < 1) {
 			newProposals =  new String[]{"nothing found.."};
 		}
 		else {
 			ArrayList<String> proposalsAr = new ArrayList<String> ();
-			for (Contact contact : event.getContacts ())
-				proposalsAr.addAll (contact.getStringRepresentation ());
+			for (Contact contact : contacts)
+                proposalsAr.addAll (contact.getStringRepresentation ());
 
 			newProposals = proposalsAr.toArray (new String[proposalsAr.size ()]);
 		}
 
 		log.debug ("Updating Autocomplete proposals.");
 		dialWindow.updateAutocompleteProposals (newProposals);
-		synchronized (this.findProposalRunning) {
-			this.findProposalRunning = false;
-		}
+        findProposalRunning.set (false);
 	}
 
 	public void widgetDefaultSelected(SelectionEvent arg0) {
@@ -131,7 +167,7 @@ implements FoundContactEventListener, IContentProposalListener, SelectionListene
 			bC.bailOut();
 		}
 		else if (text.equals("open configuration")) {
-			bC.startSettingsProducer(ControllerTypes.DialWindow);
+            ((SettingsController) bC.getController (ControllerTypes.Settings)).openAsteriskSettingsWindow ();
 		}
 		else if (text.equals("about")) {
 			/* start splash screen in 'about' mode */

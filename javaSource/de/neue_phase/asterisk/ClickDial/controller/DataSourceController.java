@@ -3,8 +3,10 @@
  */
 package de.neue_phase.asterisk.ClickDial.controller;
 
-import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants;
-import de.neue_phase.asterisk.ClickDial.util.Dispatcher;
+import com.google.common.eventbus.Subscribe;
+import de.neue_phase.asterisk.ClickDial.datasource.WebservicePhonebookDataSource;
+import de.neue_phase.asterisk.ClickDial.eventbus.EventBusFactory;
+import de.neue_phase.asterisk.ClickDial.eventbus.events.SettingsUpdatedEvent;
 import org.apache.log4j.Logger;
 
 import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants.ControllerTypes;
@@ -28,36 +30,48 @@ public class DataSourceController extends ControllerBaseClass implements Control
 	/**
 	 * 
 	 */
-	public DataSourceController(SettingsHolder settingsRef, BaseController b, Dispatcher dispatcherRef) {
+	public DataSourceController(SettingsHolder settingsRef, BaseController b) {
 		super(settingsRef, b);
+
 		type = ControllerTypes.DataSource;
-		holder = new DataSourceHolder (dispatcherRef);
+		holder = new DataSourceHolder ();
+
+        EventBusFactory.getThradPerTaskEventBus ().register (this); // for SettingsUpdatedEvent
 	}
+
+    /**
+     * @param event event that indicates what has been updated
+     */
+    @Subscribe public void handleSettingsUpdatedEvent (SettingsUpdatedEvent event) {
+        if (event.getUpdatedTypes ().contains (SettingsTypes.datasource))
+            this.checkSettings ();
+    }
 
 	/* (non-Javadoc)
 	 * @see de.neue_phase.asterisk.ClickDial.controller.ControllerInterface#startUp()
 	 */
 	public void startUp() throws InitException {
-		/* check down the settings, which datasources may be added */
 		checkSettings();
 	}
 
-	private boolean checkSettings () {
 
-		if (! settingsRef.get(SettingsTypes.datasource).getValue("xml_enabled").isEmpty()) {
-			// create a new XMLDataSource object and register it 
+    /**
+     * check the settings and add the enabled datasources
+     */
+	private void checkSettings () {
+
+		if (settingsRef.get(SettingsTypes.datasource).getValue("webservice_enabled").equals ("1") &&
+            ! holder.isRegistered(WebservicePhonebookDataSource.class)) {
+			// create a new XMLDataSource object and register it
+            log.debug("Webservice datasource is enabled!");
+            holder.registerDatasource (new WebservicePhonebookDataSource ());
 		}
 		
-		if (! settingsRef.get(SettingsTypes.datasource).getValue("outlook_enabled").isEmpty()) {
-			log.debug("Outlook datasource is enabled!");
+		if (settingsRef.get(SettingsTypes.datasource).getValue("outlook_enabled").equals ("1") &&
+            ! holder.isRegistered(OutlookDataSource.class)) {
+			log.debug("Outlook datasource is enabled! ("+settingsRef.get(SettingsTypes.datasource).getValue("outlook_enabled")+")");
 			holder.registerDatasource(new OutlookDataSource());
 		}
-			
-		if (! settingsRef.get(SettingsTypes.datasource).getValue("ldap_enabled").isEmpty()) {
-			// create an LDAP DS ?
-		}
-		
-		return true;
 	}
 
 	/**

@@ -9,7 +9,7 @@ import org.apache.log4j.Logger;
  * @author Michael Konietzny <Michael.Konietzny@neue-phase.de>
  */
 
-public abstract class DataSourceTile implements DataSourceTileInterface {
+abstract class DataSourceTile implements DataSourceTileInterface {
 	protected final Logger log 				= Logger.getLogger(this.getClass());
 	protected DataSourceResultSetListener resultSetListener = null;
 	

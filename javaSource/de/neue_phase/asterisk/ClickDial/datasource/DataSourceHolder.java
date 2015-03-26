@@ -2,13 +2,12 @@ package de.neue_phase.asterisk.ClickDial.datasource;
 
 import java.util.ArrayList;
 
+import com.google.common.eventbus.Subscribe;
 import de.neue_phase.asterisk.ClickDial.controller.listener.DataSourceResultSetListener;
 import de.neue_phase.asterisk.ClickDial.controller.exception.QueryAlreadyRunningException;
-import de.neue_phase.asterisk.ClickDial.util.Dispatcher;
-import de.neue_phase.asterisk.ClickDial.util.events.ClickDialEvent;
-import de.neue_phase.asterisk.ClickDial.util.events.FindContactEvent;
-import de.neue_phase.asterisk.ClickDial.util.events.FoundContactEvent;
-import de.neue_phase.asterisk.ClickDial.util.listener.FindContactEventListener;
+import de.neue_phase.asterisk.ClickDial.eventbus.EventBusFactory;
+import de.neue_phase.asterisk.ClickDial.eventbus.events.FindContactEvent;
+import de.neue_phase.asterisk.ClickDial.eventbus.events.FoundContactEvent;
 import org.apache.log4j.Logger;
 
 /**
@@ -18,11 +17,10 @@ import org.apache.log4j.Logger;
  * @author Michael Konietzny <Michael.Konietzny@neue-phase.de>
  */
 
-public class DataSourceHolder implements FindContactEventListener, DataSourceResultSetListener {
+public class DataSourceHolder implements DataSourceResultSetListener {
 
 	/* indicates whether a query is already running here */
 	private Boolean queryRunning 							= false;
-	private Dispatcher dispatcherRef						= null;
 	
 	/* holds all registered datasources */
 	private final ArrayList<DataSourceTile> dataSources 	= new ArrayList<DataSourceTile>();
@@ -37,16 +35,27 @@ public class DataSourceHolder implements FindContactEventListener, DataSourceRes
 	 * default constructor
 	 *
 	 */
-	public DataSourceHolder(Dispatcher dispatcherRef) {
-		this.dispatcherRef = dispatcherRef;
-		dispatcherRef.addEventListener (ClickDialEvent.Type.ClickDial_FindContactEvent, this);
+	public DataSourceHolder() {
+        EventBusFactory.getThradPerTaskEventBus ().register (this);
 	}
-	
+
+    /**
+     * is the given class already registered in the holder?
+     * @param dsClass lookup this class in the registry
+     * @return yes/no
+     */
+    public Boolean isRegistered (Class dsClass) {
+        for (DataSourceTile ds : dataSources) {
+            if (ds.getClass () == dsClass)
+                return true;
+        }
+
+        return false;
+    }
 	/**
 	 * register a new and valid dataSource
 	 * @param ds
 	 */
-	
 	public void registerDatasource (DataSourceTile ds)
 	{
 		log.debug ("Register Datasource: '"+ds.getName ()+"'");
@@ -59,12 +68,12 @@ public class DataSourceHolder implements FindContactEventListener, DataSourceRes
 	 * @param queryStr
 	 * @return the found DataSource results in an ArrayList<String> 
 	 */
-
 	public void queryAll (String queryStr) throws QueryAlreadyRunningException
 	{
 
 		toggleQueryRunning ( true );
 		ArrayList<Thread>		 threadArray = new ArrayList<Thread> ();
+        resultSet                            = new ArrayList<> (); // clear result set
 
 		for (DataSourceTile dataSource : dataSources) {
 			Thread t = new Thread (() -> dataSource.query (queryStr));
@@ -85,6 +94,10 @@ public class DataSourceHolder implements FindContactEventListener, DataSourceRes
 		log.debug("all threads finished");
 	}
 
+    /**
+     * callback for all the datasources to add their resultset
+     * @param rs
+     */
 	@Override
 	public synchronized void addResultSet (ArrayList<Contact> rs) {
 		if (this.resultSet == null)
@@ -114,21 +127,23 @@ public class DataSourceHolder implements FindContactEventListener, DataSourceRes
 	/**
 	 * handle the FindContactEvent from any consumer and generate a FoundContactEvent after
 	 * a search on all registered DataSources
-	 * @param event
+	 * @param event an event that indicates what needs to be searched
 	 */
-	public void handleFindContactEvent (FindContactEvent event) {
+	@Subscribe public void handleFindContactEvent (FindContactEvent event) {
 		try {
 			this.queryAll (event.getSearchString ());
 			log.debug ("QueryAll done - result set size:" + this.resultSet.size ());
-			dispatcherRef.dispatchEvent (new FoundContactEvent (this.resultSet));
+            log.debug ("posting eventbus: " + EventBusFactory.getDisplayThreadEventBus ().toString ());
+            EventBusFactory.getDisplayThreadEventBus ().post (new FoundContactEvent (this.resultSet));
+            log.debug ("posted eventbus: " + EventBusFactory.getDisplayThreadEventBus ().toString ());
 		} catch (QueryAlreadyRunningException e) {
 			log.error ("FindContactEvent for " + event.getSearchString () + " can't be handled since a query is already running.");
 		}
 	}
+
 	/**
 	 * close down
 	 */
-	
 	public void closeDown () {
 
 		Boolean closeable = false;

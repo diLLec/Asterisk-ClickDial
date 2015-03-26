@@ -34,6 +34,10 @@ public class Contact {
         }
     }
 
+    /**
+     * get the contact as list of strings for all matching numbers
+     * @return
+     */
     public ArrayList<String> getStringRepresentation () {
         ArrayList<String> returnString = new ArrayList<String>();
 

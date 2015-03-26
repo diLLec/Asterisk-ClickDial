@@ -24,7 +24,8 @@ public class ControllerConstants {
 	}
 
 	public enum ServiceInterfaceProblems {
-		ConnectionProblem
+		ConnectionProblem,
+		AuthenticationDataExpired
 	}
 
 	public enum JobTypes {

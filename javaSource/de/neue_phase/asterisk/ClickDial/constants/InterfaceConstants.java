@@ -109,6 +109,11 @@ public class InterfaceConstants {
 	public static final String TrayIcon_Icon 	= TrayIcon_Path + "asterisk-tray.png";
 	public static final String TrayIcon_ToolTip = InterfaceConstants.myName;
 
-
+    public static enum WorkstateTypes {
+        Arbeit,
+        AusserHaus,
+        Feierabend,
+        Pause
+    }
 
 }

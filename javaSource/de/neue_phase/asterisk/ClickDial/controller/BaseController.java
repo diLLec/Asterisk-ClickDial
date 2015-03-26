@@ -7,16 +7,22 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.Callable;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
 
+import com.google.common.eventbus.DeadEvent;
+import com.google.common.eventbus.Subscribe;
 import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants;
 import de.neue_phase.asterisk.ClickDial.constants.InterfaceConstants;
 import de.neue_phase.asterisk.ClickDial.controller.listener.InsufficientServiceAuthenticationDataListener;
 import de.neue_phase.asterisk.ClickDial.controller.listener.ServiceInterfaceProblemListener;
+import de.neue_phase.asterisk.ClickDial.eventbus.events.*;
 import de.neue_phase.asterisk.ClickDial.jobs.AutoConfigJob;
 import de.neue_phase.asterisk.ClickDial.jobs.IJob;
 import de.neue_phase.asterisk.ClickDial.serviceInterfaces.AsteriskManagerWebservice;
 import de.neue_phase.asterisk.ClickDial.serviceInterfaces.IServiceInterface;
 import de.neue_phase.asterisk.ClickDial.settings.*;
+import de.neue_phase.asterisk.ClickDial.settings.extractModels.ExtractAsteriskManagerInterfaceAuthData;
+import de.neue_phase.asterisk.ClickDial.settings.extractModels.ExtractWebserviceAuthData;
 import de.neue_phase.asterisk.ClickDial.settings.extractModels.ISettingsExtractModel;
 import de.neue_phase.asterisk.ClickDial.widgets.UserActionBox;
 import org.apache.log4j.Logger;
@@ -27,9 +33,7 @@ import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants.ServiceInt
 import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants.JobTypes;
 import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants.ServiceInterfaceProblems;
 import de.neue_phase.asterisk.ClickDial.constants.SettingsConstants.SettingsTypes;
-import de.neue_phase.asterisk.ClickDial.controller.listener.InsufficientSettingsListener;
 import de.neue_phase.asterisk.ClickDial.controller.exception.InitException;
-import de.neue_phase.asterisk.ClickDial.util.Dispatcher;
 
 /**
  * The BaseController will startup every Controller and bailsOut if
@@ -39,7 +43,7 @@ import de.neue_phase.asterisk.ClickDial.util.Dispatcher;
  * @author Michael Konietzny <Michael.Konietzny@neue-phase.de>
  */
 
-public class BaseController implements InsufficientSettingsListener, InsufficientServiceAuthenticationDataListener, ServiceInterfaceProblemListener {
+public class BaseController {
 
 	public final static boolean BRINGUP_SHUTDOWN_IF_FAIL = true;
 	public final static boolean BRINGUP_CONTINUE_IF_FAIL = false;
@@ -59,64 +63,37 @@ public class BaseController implements InsufficientSettingsListener, Insufficien
 
 	private boolean jobWatchdogScheduled			= false;
 
-	private Dispatcher dispatcherRef 				= null;
 	private SettingsWebserviceKeystore keystore		= null;
 
 	private IServiceInterface lastExtract			= null;
 
-	public BaseController(Display displayRef, SettingsHolder settingsRef, Dispatcher dispatcherRef) {
+	public BaseController(Display displayRef, SettingsHolder settingsRef) {
 		this.displayRef 	= displayRef;
 		this.settingsRef 	= settingsRef;
-		this.dispatcherRef	= dispatcherRef;
 	}
 
-	abstract class MyRunnable<T> implements Runnable {
-		public T result;
+	@Subscribe
+	public void onServiceInsufficientAuthDataEvent (ManagerInsufficientAuthDataEvent event) {
+		event.setResponse ((ExtractAsteriskManagerInterfaceAuthData) onServiceInsufficientAuthDataEvent (event.getType (), event.getAuthTry ()));
 	}
 
-	public ISettingsExtractModel startSettingsProducer(ControllerTypes type) {
-
-		MyRunnable <ISettingsExtractModel> runblock = new MyRunnable<ISettingsExtractModel> () {
-			@Override
-			public void run () {
-				result = _startSettingsProducer (type);
-			}
-		};
-
-		// make sure this one is executed by the display main thread
-		displayRef.syncExec (runblock);
-		return runblock.result;
+	@Subscribe
+	public void onServiceInsufficientAuthDataEvent (WebserviceInsufficientAuthDataEvent event) {
+        event.setResponse ((ExtractWebserviceAuthData) onServiceInsufficientAuthDataEvent(event.getType (), event.getAuthTry ()));
 	}
 
-	public ISettingsExtractModel _startSettingsProducer(ControllerTypes type) {
+    /**
+     * Implementation of the auth data provider
+     * @param type Service Interface who asks for data
+     * @param tryCount the try (0 == first try - give cached data)
+     * @return the auth extract object
+     */
+	private  ISettingsExtractModel onServiceInsufficientAuthDataEvent (ServiceInterfaceTypes type, Integer tryCount) {
 		/* check from where the setting request is sent */
 		log.debug("startSettingsProducer from " + type.toString());
-		switch (type) {
-
-		}
-		lastExtract = null;
-		return null;
-	}
-
-
-	public ISettingsExtractModel startSettingsProducer (ServiceInterfaceTypes type, Integer tryCount) {
-
-		MyRunnable <ISettingsExtractModel> runblock = new MyRunnable<ISettingsExtractModel> () {
-			@Override
-			public void run () {
-				result = _startSettingsProducer (type, tryCount);
-			}
-		};
-
-		// make sure this one is executed by the display main thread
-		displayRef.syncExec (runblock);
-		return runblock.result;
-	}
-
-
-	public ISettingsExtractModel _startSettingsProducer(ServiceInterfaceTypes type, Integer tryCount) {
-		/* check from where the setting request is sent */
-		log.debug("startSettingsProducer from " + type.toString());
+        try {
+            TimeUnit.SECONDS.sleep (1);
+        } catch (InterruptedException e) {}
 		switch (type) {
 			case Webservice: {
 				if (tryCount == 0 && keystore.hasWebserviceAuthData ())
@@ -143,18 +120,14 @@ public class BaseController implements InsufficientSettingsListener, Insufficien
 						return null;
 				}
 			}
+
 			case AsteriskManagerInterface: {
 
-				String re;
 				if (tryCount == 0)
 					return ((SettingsAsterisk) settingsRef.get(SettingsTypes.asterisk)).getAsteriskAuthData ();
 				else {
-					UserActionBox ua = new UserActionBox ("Authentication Data for Asterisk Manager Interface was incorrect.\n" +
-														  "Connection will probably be restored in next AutoConfig run.",
-														  InterfaceConstants.SettingsImages.error,
-														  true);
-					ua.addButton ("OK", 1);
-					re = ua.open ();
+                    ((TrayIconController) this.getController (ControllerTypes.TrayIcon)).popupError ("Authentication Data for Asterisk Manager Interface was incorrect.\n" +
+                                                                                                     "Connection will probably be restored in next AutoConfig run.");
 					return null;
 				}
 			}
@@ -163,20 +136,27 @@ public class BaseController implements InsufficientSettingsListener, Insufficien
 		return null;
 	}
 
-	public Boolean handleServiceInterfaceContinueOrNot (ServiceInterfaceTypes type, ServiceInterfaceProblems problem, Integer tryCount) {
-		MyRunnable <Boolean> runblock = new MyRunnable<Boolean> () {
-			@Override
-			public void run () {
-				result = _handleServiceInterfaceContinueOrNot (type, problem, tryCount);
-			}
-		};
 
-		// make sure this one is executed by the display main thread
-		displayRef.syncExec (runblock);
-		return runblock.result;
+	/**
+	 * acknowledge if a provided knowledge data has
+	 */
+	@Subscribe
+	public void onServiceAcknowledgeAuthDataEvent (ServiceAcknowledgeAuthDataEvent event) {
+		if (this.keystore.isWriteable ())
+			this.keystore.acknowledgeCredentials ();
 	}
 
-	public Boolean _handleServiceInterfaceContinueOrNot (ServiceInterfaceTypes type, ServiceInterfaceProblems problem, Integer tryCount) {
+	@Subscribe
+	public void onProblemEvent(ManagerProblemEvent event) {
+		event.setResponse ( onProblemEvent (event.getType (), event.getProblemType (), event.getProblemTry ()) );
+    }
+
+    @Subscribe
+    public void onProblemEvent(WebserviceProblemEvent event) {
+        event.setResponse ( onProblemEvent (event.getType (), event.getProblemType (), event.getProblemTry ()) );
+    }
+
+    private Boolean onProblemEvent (ServiceInterfaceTypes type, ServiceInterfaceProblems problem, Integer tryCount) {
 		log.debug("handleServiceInterfaceContinueOrNot from " + type.toString() + " with problem " + problem.toString ());
 		if (type == ServiceInterfaceTypes.Webservice) {
 			switch (problem) {
@@ -197,12 +177,8 @@ public class BaseController implements InsufficientSettingsListener, Insufficien
 		if (type == ServiceInterfaceTypes.AsteriskManagerInterface) {
 			switch (problem) {
 				case ConnectionProblem:
-					UserActionBox ua = new UserActionBox ("Asterisk Manager Interface Connection has disconnected/failed.\n"+
-														  "Closing Application"	,
-														  InterfaceConstants.SettingsImages.error,
-														  true);
-					ua.addButton ("ok", 1);
-					ua.open ();
+                    ((TrayIconController) this.getController (ControllerTypes.TrayIcon)).popupError ("Asterisk Manager Interface Connection has disconnected/failed.\n"+
+                                                                                                     "Application will not be able to signal incoming calls.");
 					return true;
 
 			}
@@ -210,6 +186,11 @@ public class BaseController implements InsufficientSettingsListener, Insufficien
 
 		return false;
 	}
+
+    @Subscribe
+    public void onManagerProblemResolveEvent (ManagerProblemResolveEvent event) {
+        ((TrayIconController) this.getController (ControllerTypes.TrayIcon)).popupInformation ("Asterisk Manager Interface Connection online/ok again");
+    }
 
 	/**
 	 * @return the type
@@ -226,7 +207,6 @@ public class BaseController implements InsufficientSettingsListener, Insufficien
 	 */
 	public void bringUp (ControllerInterface controller, boolean needed) {
 		try {
-			controller.registerInsufficientSettingsListener(this);
 			controller.startUp();
 			if (controller.isWidgetController())
 				widgetController.add(controller);
@@ -257,8 +237,6 @@ public class BaseController implements InsufficientSettingsListener, Insufficien
 	 */
 	public void bringUp (IServiceInterface service, boolean needed) {
 		try {
-			service.setInsufficientServiceAuthenticationDataListener (this);
-			service.setServiceInterfaceProblemListener (this);
 			service.startUp();
 		}
 		catch (InitException e)
@@ -332,9 +310,10 @@ public class BaseController implements InsufficientSettingsListener, Insufficien
 					this.raiseJobCrashCount (entry.getKey ());
 
 					jobsHash.remove (type);
+                    // TODO: the job must be able to instantiate itself, otherwise this won't be work for generic Jobs
 					this.bringUp (new AutoConfigJob (new AutoConfig (this.settingsRef,
-																	 (AsteriskManagerWebservice) this.getServiceInterface (ServiceInterfaceTypes.Webservice),
-																	 dispatcherRef)),
+																	 (AsteriskManagerWebservice) this.getServiceInterface (ServiceInterfaceTypes.Webservice))
+                                  ),
 								  BaseController.BRINGUP_CONTINUE_IF_FAIL);
 				}
 				else {
@@ -370,7 +349,6 @@ public class BaseController implements InsufficientSettingsListener, Insufficien
 			if (!displayRef.readAndDispatch ()) {
 				displayRef.sleep ();
 			}
-			dispatcherRef.dispatch();
 		}
 	}
 	
@@ -426,9 +404,8 @@ public class BaseController implements InsufficientSettingsListener, Insufficien
 		}
 	}
 
-	@Override
-	public void acknowledgeLoginData () {
-		if (this.keystore.isWriteable ())
-			this.keystore.acknowledgeCredentials ();
-	}
+    @Subscribe public void deadEventHandler (DeadEvent e) {
+        log.debug ("Dead event found: " + e.getEvent ().toString ());
+    }
+
 }

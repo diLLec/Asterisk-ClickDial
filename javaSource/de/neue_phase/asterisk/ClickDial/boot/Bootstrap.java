@@ -4,10 +4,11 @@
 package de.neue_phase.asterisk.ClickDial.boot;
 
 import de.neue_phase.asterisk.ClickDial.constants.ServiceConstants;
+import de.neue_phase.asterisk.ClickDial.controller.*;
+import de.neue_phase.asterisk.ClickDial.eventbus.EventBusFactory;
 import de.neue_phase.asterisk.ClickDial.jobs.AutoConfigJob;
 import de.neue_phase.asterisk.ClickDial.serviceInterfaces.AsteriskManagerWebservice;
 import de.neue_phase.asterisk.ClickDial.settings.*;
-import de.neue_phase.asterisk.ClickDial.util.Dispatcher;
 import org.apache.log4j.Logger;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.Rectangle;
@@ -16,12 +17,9 @@ import org.eclipse.swt.widgets.Shell;
 
 import de.neue_phase.asterisk.ClickDial.constants.InterfaceConstants;
 import de.neue_phase.asterisk.ClickDial.serviceInterfaces.AsteriskManagerInterface;
-import de.neue_phase.asterisk.ClickDial.controller.BaseController;
-import de.neue_phase.asterisk.ClickDial.controller.CallWindowController;
-import de.neue_phase.asterisk.ClickDial.controller.DataSourceController;
-import de.neue_phase.asterisk.ClickDial.controller.DialWindowController;
-import de.neue_phase.asterisk.ClickDial.controller.TrayIconController;
 import de.neue_phase.asterisk.ClickDial.widgets.SplashScreen;
+
+import java.util.logging.Level;
 
 /**
  * @author Michael Konietzny <Michael.Konietzny@neue-phase.de>
@@ -48,8 +46,7 @@ public class Bootstrap  implements Runnable {
 	public static final Shell		primaryShell	= new Shell();
 
 	/* the base controller */
-	private static final Dispatcher     dispatcher	= new Dispatcher (display);
-	private static final BaseController bC			= new BaseController(display, settings, dispatcher);
+	private static final BaseController bC			= new BaseController(display, settings);
 
 	/* the splash screen */
 	private static SplashScreen splash 				= null;
@@ -58,6 +55,7 @@ public class Bootstrap  implements Runnable {
 	
 	public static void main(String[] args) {
 		log.info(InterfaceConstants.myName + " starting up. SWT Version = " + SWT.getVersion() + " OS = " + System.getProperty("os.name"));
+        java.util.logging.Logger.getGlobal ().setLevel (Level.ALL);
 
 		splash = new SplashScreen (4);
 		splash.open();
@@ -76,6 +74,13 @@ public class Bootstrap  implements Runnable {
 	}
 
 	public void run() {
+
+        /*
+         instanciate the display event bus
+         */
+        EventBusFactory.instanciateDisplayEventBus(display);
+
+
 		/*
 		 *  first step:   parse the configuration
 		 */
@@ -83,20 +88,33 @@ public class Bootstrap  implements Runnable {
 		settings.newTile(SettingsAsterisk.class);
 		settings.newTile(SettingsGlobal.class);
 		settings.newTile(SettingsDatasource.class);
+        bC.bringUp (new SettingsController (settings, bC), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
 
+
+        log.debug("starting TrayIconController");
+        bC.bringUp(new TrayIconController(settings, bC), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
+        log.debug("... done starting TrayIconController");
+
+		/**
+		 * register eventbus
+		 */
+		EventBusFactory.getDisplayThreadEventBus ().register (bC);
 
 		splash.setDescribingText("Connecting Service Interfaces ...");
 		bC.initKeystore ();
 		AsteriskManagerWebservice asWebservice = new AsteriskManagerWebservice (ServiceConstants.WebserviceURL);
 		bC.bringUp (asWebservice, BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
+        EventBusFactory.getSyncEventBus ().register (asWebservice);
+        EventBusFactory.getThradPerTaskEventBus ().register (asWebservice);
 
 		splash.setDescribingText("Starting AutoConfiguration via Asterisk Manager Webservice ...");
-		bC.bringUp (new AutoConfigJob (new AutoConfig (settings, asWebservice, dispatcher)), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
+		bC.bringUp (new AutoConfigJob (new AutoConfig (settings, asWebservice)), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
 		bC.scheduleJobWatchdog ();
 
 		splash.setDescribingText("linking with asterisk ...");
 		log.debug("starting AsteriskConnectionController ...");
-		bC.bringUp(new AsteriskManagerInterface (dispatcher), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
+		bC.bringUp(new AsteriskManagerInterface (), BaseController.BRINGUP_CONTINUE_IF_FAIL);
+
 		log.debug("... done starting AsteriskConnectionController");
 		/*
 		 * second step:   startup the controller's 
@@ -105,7 +123,7 @@ public class Bootstrap  implements Runnable {
 		/* the DataSources Controller */
 		splash.setDescribingText ("Connecting datasources ...");
 		log.debug("starting DataSourceController ...");
-		bC.bringUp(new DataSourceController(settings, bC, dispatcher), BaseController.BRINGUP_CONTINUE_IF_FAIL);
+		bC.bringUp(new DataSourceController(settings, bC), BaseController.BRINGUP_CONTINUE_IF_FAIL);
 		log.debug("... done starting DataSourceController");
 		/* the AsteriskConnection Controller */
 		
@@ -123,12 +141,8 @@ public class Bootstrap  implements Runnable {
 		/* raising counter to 4  - splash screen dies now */
 		splash.setDescribingText("Done! Now we bring up the dialwindow ...");
 		
-		log.debug("starting TrayIconController");
-		bC.bringUp(new TrayIconController(settings, bC), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
-		log.debug("... done starting TrayIconController");
-		
 		log.debug("starting DialWindowController");
-		bC.bringUp(new DialWindowController(settings, bC, dispatcher), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
+		bC.bringUp(new DialWindowController(settings, bC), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
 		log.debug("... done starting DialWindowController");
 		
 		return;
