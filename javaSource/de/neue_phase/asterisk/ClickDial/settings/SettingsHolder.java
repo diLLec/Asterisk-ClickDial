@@ -39,23 +39,31 @@ public class SettingsHolder {
 							= new HashMap<SettingsConstants.SettingsExpander, ArrayList<SettingsAbstractMaster>>();
 	
 	
-	private final Logger log = Logger.getLogger(this.getClass());
-
-	/* to be able to return myself */
-	private static SettingsHolder holder	= new SettingsHolder();
+	private final Logger log                = Logger.getLogger(this.getClass());
+	private static SettingsHolder instance	= null;
 	
-	public SettingsHolder()  {
-		log.debug("SettingsHolder with settings version "+SettingsConstants.SettingsAbstractMaster_version+" started");		
-	}
 	
 	/**
 	 * static function, which will return the only SettingsHolder in this Application
-	 * @return
+	 * @return singleton 
 	 */
-	public static SettingsHolder getCurrent () {
-		return holder;
+	public static SettingsHolder getInstance () {
+		if (instance == null)
+            instance = new SettingsHolder();
+        
+        return instance;
 	}
-	/**
+
+    /**
+     * constructor
+     */
+    private SettingsHolder()  {
+        if (instance != null)
+            throw new IllegalStateException("Already instantiated");
+    }
+
+
+    /**
 	 * called if we need to register a new SettingsAbstractMaster into our
 	 * settings HashMap
 	 * @param setting

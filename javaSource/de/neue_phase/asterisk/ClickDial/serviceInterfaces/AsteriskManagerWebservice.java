@@ -23,6 +23,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -408,16 +409,16 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
 
     /**
      * Set Workstate
-     * @return call scheduled / call not scheduled
+     * @return Successful/Failed
      */
     public Boolean setWorkstate (InterfaceConstants.WorkstateTypes targetWorkstate) {
-        JSONObject originationData = new JSONObject ();
-        originationData.put ("new_state", targetWorkstate.toString ());
+        JSONObject workstateData = new JSONObject ();
+        workstateData.put ("new_state", targetWorkstate.toString ());
 
         HttpResponse<JsonNode> jsonResponse = this.doJsonRequest (Unirest.post (this.serviceURL + "/workstate")
                                                                           .header ("accept", "application/json")
                                                                           .header ("Content-Type", "application/json; charset=UTF-8")
-                                                                          .body (new JsonNode (originationData.toString ()))
+                                                                          .body (new JsonNode (workstateData.toString ()))
                                                                           .getHttpRequest ());
 
         if (jsonResponse != null) {
@@ -440,4 +441,46 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
 
         return false;
     }
+
+    /**
+     * Get Workstate
+     * @return the current workstate of the user or null if query/data failed
+     */
+    public InterfaceConstants.WorkstateTypes getWorkstate () {
+        HttpResponse<JsonNode> jsonResponse = this.doJsonRequest (Unirest.get (this.serviceURL + "/workstate")
+                                                                          .header ("accept", "application/json")
+                                                                          .header ("Content-Type", "application/json; charset=UTF-8")
+                                                                          .getHttpRequest ());
+
+        if (jsonResponse != null) {
+            try {
+                JSONObject body = jsonResponse.getBody ().getObject ();
+                String status = (String) body.get ("responseStatus");
+
+                if (status.equals ("OK")) {
+                    String workstate = (String) body.get ("workstate");
+
+                    try  {
+                        return InterfaceConstants.WorkstateTypes.valueOf (workstate);
+                    }
+                    catch (Exception e) {
+                        // the one we are looking for is IllegalArgumentException, but if there is another error we would not fall into here
+                        log.error ("Did not find the workstate enum value given out of the workstate Webservice request '"+workstate+"'");
+                        return null; // error
+                    }
+
+                }
+                else {
+                    log.error ("Could not get Workstate.");
+                    return null; // error
+                }
+
+            } catch (JSONException ex) {
+                log.error ("Bogus JSON Response on CallOrigination Request", ex);
+            }
+        }
+
+        return null; // error
+    }
+
 }

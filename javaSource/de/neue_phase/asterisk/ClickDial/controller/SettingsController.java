@@ -3,6 +3,7 @@ package de.neue_phase.asterisk.ClickDial.controller;
 
 import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants;
 import de.neue_phase.asterisk.ClickDial.constants.SettingsConstants;
+import de.neue_phase.asterisk.ClickDial.controller.exception.InitException;
 import de.neue_phase.asterisk.ClickDial.settings.SettingsHolder;
 import de.neue_phase.asterisk.ClickDial.widgets.SettingsWindow;
 import org.eclipse.swt.widgets.Display;
@@ -15,6 +16,16 @@ public class SettingsController extends ControllerBaseClass {
     public SettingsController(SettingsHolder settingsRef, BaseController b) {
         super (settingsRef, b);
         type		= ControllerConstants.ControllerTypes.Settings;
+    }
+
+    @Override
+    public void startUp () throws InitException {
+        // nothing to startup
+    }
+
+    @Override
+    public void closeDown () {
+        // nothing to close
     }
 
     /**

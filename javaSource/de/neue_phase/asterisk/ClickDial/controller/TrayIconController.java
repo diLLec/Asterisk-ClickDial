@@ -5,6 +5,8 @@ package de.neue_phase.asterisk.ClickDial.controller;
 
 import com.google.common.eventbus.Subscribe;
 import de.neue_phase.asterisk.ClickDial.constants.InterfaceConstants.WorkstateTypes;
+import de.neue_phase.asterisk.ClickDial.controller.exception.InitException;
+import de.neue_phase.asterisk.ClickDial.controller.exception.UnknownObjectException;
 import de.neue_phase.asterisk.ClickDial.eventbus.EventBusFactory;
 import de.neue_phase.asterisk.ClickDial.eventbus.events.SetWorkstateEvent;
 import de.neue_phase.asterisk.ClickDial.eventbus.events.UpdateWorkstateEvent;
@@ -46,8 +48,12 @@ public class TrayIconController extends ControllerBaseClass implements
 	 * @param b
 	 */
 	public TrayIconController(SettingsHolder settingsRef, BaseController b) {
-		super(settingsRef, b);
-		type = ControllerTypes.TrayIcon;
+        super (settingsRef, b);
+    }
+
+    @Override
+    public void startUp () throws InitException {
+        type = ControllerTypes.TrayIcon;
 
         try {
             trayFunctions.put ("open configuration", TrayIconController.class.getDeclaredMethod ("trayFuncOpenConfiguration"));
@@ -67,7 +73,12 @@ public class TrayIconController extends ControllerBaseClass implements
      * TrayIcon Function: open the configuration Window
      */
     private void trayFuncOpenConfiguration () {
-        ((SettingsController) bC.getController (ControllerTypes.Settings)).openSettingsWindow ();
+        try {
+            SettingsController settings = (SettingsController) bC.getController (ControllerTypes.Settings);
+            settings.openSettingsWindow ();
+        } catch (UnknownObjectException e) {
+            log.error ("SettingsController not registered - can't show settings window.", e);
+        }
     }
 
     /**
@@ -115,7 +126,12 @@ public class TrayIconController extends ControllerBaseClass implements
 		
 		if (arg0.widget instanceof TrayItem) {
 			/* tray item code  - show the dialWindow Controller*/
-			((DialWindowController) bC.getController(ControllerTypes.DialWindow)).toggleHideShowDialWindow();
+            try {
+                DialWindowController dialWindow = ((DialWindowController) bC.getController (ControllerTypes.DialWindow));
+                dialWindow.toggleHideShowDialWindow ();
+            } catch (UnknownObjectException e) {
+                log.error ("DialWindowController not registered - can't toggle hide/show dialWindow.", e);
+            }
 		}
 		else if (arg0.widget instanceof MenuItem) {
             MenuItem menuItem = ((MenuItem) arg0.widget);
@@ -141,19 +157,35 @@ public class TrayIconController extends ControllerBaseClass implements
 		}
 	}
 
+    /**
+     * Event that occurs if the workstate of the currently authenticated user has changed.
+     * @param event event object with new workstate information
+     */
     @Subscribe public void onUpdateWorkstateEvent (UpdateWorkstateEvent event) {
         icon.updateTrayIconByWorkstate (event.getTargetWorkstate ());
     }
 
 
+    /**
+     * show a balloon tip with an information icon
+     * @param message message inside of the tip
+     */
     public void popupInformation (String message) {
         icon.popupMessage (message, SWT.BALLOON | SWT.ICON_INFORMATION);
     }
 
+    /**
+     * show a balloon tip with an error icon
+     * @param message message inside of the tip
+     */
     public void popupError (String message) {
         icon.popupMessage (message, SWT.BALLOON | SWT.ICON_ERROR);
     }
 
+    /**
+     * show a balloon tip with a warning icon
+     * @param message message inside of the tip
+     */
     public void popupWarning (String message) {
         icon.popupMessage (message, SWT.BALLOON | SWT.ICON_WARNING);
     }

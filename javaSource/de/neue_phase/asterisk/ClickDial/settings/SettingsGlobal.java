@@ -55,6 +55,10 @@ public class SettingsGlobal extends SettingsAbstractMaster {
 		tmp = new SettingsElement("call_window_trans", "Maximum CallWindow transparency", "80", SettingsConstants.SettingsElementType.spinner);
 		tmp.registerSpecificSetting("spinner_min_max", new String[] {"10", "255"} );
 		settings.put(tmp.getName(), tmp);
+
+        tmp = new SettingsElement("text_selection_call_hk", "Hotkey to transfer currently selected \n text into the dial window", "F11", SettingsConstants.SettingsElementType.dropdown);
+        tmp.registerSpecificSetting("dropdown_values", new String[] {"F11", "F10", "STRG+A", "STRG+D" } );
+        settings.put(tmp.getName(), tmp);
 	}
 	
 	/** 

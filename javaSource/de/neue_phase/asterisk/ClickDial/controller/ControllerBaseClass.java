@@ -28,30 +28,30 @@ abstract class ControllerBaseClass implements ControllerInterface {
 		this.settingsRef 	= settingsRef;
 		this.bC 			= b;
 	}
-	
+
+    /**
+     * Get the controller type for wiring over the BaseController
+     * @return
+     */
 	public ControllerConstants.ControllerTypes getName() {
 		return this.type;
 	}
 
+    /**
+     * Set the controller type for wiring over BaseController
+     * @param type
+     */
 	public void setType(ControllerTypes type) {
 		this.type = type;
 	}
+
 	/**  
 	 * register the insufficient settings listener
 	 * @param l
 	 */
-	public void registerInsufficientSettingsListener(
-			InsufficientSettingsListener l) {
+	public void registerInsufficientSettingsListener (InsufficientSettingsListener l) {
 		log.debug("registered InsufficientSettingsListener "+ l);
 		iSettingsListener = l;
 	}
 
-	public void startUp() throws InitException {
-		return;
-	}
-
-	public void closeDown () {
-		return;	
-	}
-	
 }

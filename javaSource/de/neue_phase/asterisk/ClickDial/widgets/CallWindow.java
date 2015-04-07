@@ -85,7 +85,7 @@ public class CallWindow {
   	private int				transparency	= 0;
   	private Display			display			= Display.getCurrent();
   	private Shell			shell			= new Shell(Bootstrap.primaryShell,  SWT.ON_TOP);
-  	private	SettingsHolder  settings		= SettingsHolder.getCurrent();	
+  	private	SettingsHolder  settings		= SettingsHolder.getInstance();
   	
   	/* dependency information */
   	private CallWindowWindowPlacer 	placer 			= null;	// -- index 

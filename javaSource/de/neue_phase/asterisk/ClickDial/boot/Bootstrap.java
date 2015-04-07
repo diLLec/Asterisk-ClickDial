@@ -3,10 +3,13 @@
  */
 package de.neue_phase.asterisk.ClickDial.boot;
 
+import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants;
 import de.neue_phase.asterisk.ClickDial.constants.ServiceConstants;
 import de.neue_phase.asterisk.ClickDial.controller.*;
 import de.neue_phase.asterisk.ClickDial.eventbus.EventBusFactory;
 import de.neue_phase.asterisk.ClickDial.jobs.AutoConfigJob;
+import de.neue_phase.asterisk.ClickDial.jobs.JobFactory;
+import de.neue_phase.asterisk.ClickDial.jobs.exceptions.JobCreationException;
 import de.neue_phase.asterisk.ClickDial.serviceInterfaces.AsteriskManagerWebservice;
 import de.neue_phase.asterisk.ClickDial.settings.*;
 import org.apache.log4j.Logger;
@@ -37,16 +40,18 @@ public class Bootstrap  implements Runnable {
 	
 	/* the logging facility */
 	private static final Logger    log 				= Logger.getLogger("Bootstrap");
-	/* the global settings reader */
-	private static final SettingsHolder  settings 	= SettingsHolder.getCurrent();
+
 	/* the main SWT display */
 	private static final Display	display 		= new Display ();
 
 	/* the non-open primary shell, which will prevent the taskbar to show our windows */
 	public static final Shell		primaryShell	= new Shell();
 
+    /* the global settings reader */
+    private static final SettingsHolder  settings 	= SettingsHolder.getInstance();
+
 	/* the base controller */
-	private static final BaseController bC			= new BaseController(display, settings);
+	private static final BaseController bC			= BaseController.getInstance();
 
 	/* the splash screen */
 	private static SplashScreen splash 				= null;
@@ -108,7 +113,18 @@ public class Bootstrap  implements Runnable {
         EventBusFactory.getThradPerTaskEventBus ().register (asWebservice);
 
 		splash.setDescribingText("Starting AutoConfiguration via Asterisk Manager Webservice ...");
-		bC.bringUp (new AutoConfigJob (new AutoConfig (settings, asWebservice)), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
+        try {
+            bC.bringUp (JobFactory.createJob (ControllerConstants.JobTypes.AutoConfig), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
+        } catch (JobCreationException e) {
+            log.error ("Unable to spawn AutoConfig job", e);
+        }
+
+        splash.setDescribingText("Starting WorkstateGetterJob ...");
+        try {
+            bC.bringUp (JobFactory.createJob (ControllerConstants.JobTypes.WorkstateGetter), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
+        } catch (JobCreationException e) {
+            log.error ("Unable to spawn WorkstateGetterJob", e);
+        }
 		bC.scheduleJobWatchdog ();
 
 		splash.setDescribingText("linking with asterisk ...");
@@ -136,15 +152,15 @@ public class Bootstrap  implements Runnable {
 		bC.bringUp(new CallWindowController(settings, bC), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
 		log.debug("... done starting CallWindowController");
 
+        log.debug("starting HotkeyController");
+        bC.bringUp(new HotkeyController (settings, bC), BaseController.BRINGUP_CONTINUE_IF_FAIL);
+        log.debug("... done starting HotkeyController");
 
-		
 		/* raising counter to 4  - splash screen dies now */
 		splash.setDescribingText("Done! Now we bring up the dialwindow ...");
 		
 		log.debug("starting DialWindowController");
 		bC.bringUp(new DialWindowController(settings, bC), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
 		log.debug("... done starting DialWindowController");
-		
-		return;
 	}	
 }

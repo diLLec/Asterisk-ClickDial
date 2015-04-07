@@ -19,7 +19,7 @@ public class CallWindowWindowPlacer {
 
 	CallWindowAppearEdges edge 	= CallWindowAppearEdges.right;
 	Integer				  index	= 1;
-	Integer				  mon   = SettingsHolder.getCurrent().get(SettingsTypes.global).getValueInteger("call_window_monitor");
+	Integer				  mon   = SettingsHolder.getInstance().get(SettingsTypes.global).getValueInteger("call_window_monitor");
 	Rectangle			  mb	= null;
 	
 	public CallWindowWindowPlacer(CallWindowAppearEdges edge, int Iindex) {

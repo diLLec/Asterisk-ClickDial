@@ -2,23 +2,18 @@ package de.neue_phase.asterisk.ClickDial.controller;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
 import java.util.Map.Entry;
-import java.util.concurrent.Callable;
-import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.google.common.eventbus.DeadEvent;
 import com.google.common.eventbus.Subscribe;
 import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants;
 import de.neue_phase.asterisk.ClickDial.constants.InterfaceConstants;
-import de.neue_phase.asterisk.ClickDial.controller.listener.InsufficientServiceAuthenticationDataListener;
-import de.neue_phase.asterisk.ClickDial.controller.listener.ServiceInterfaceProblemListener;
+import de.neue_phase.asterisk.ClickDial.controller.exception.UnknownObjectException;
 import de.neue_phase.asterisk.ClickDial.eventbus.events.*;
-import de.neue_phase.asterisk.ClickDial.jobs.AutoConfigJob;
 import de.neue_phase.asterisk.ClickDial.jobs.IJob;
-import de.neue_phase.asterisk.ClickDial.serviceInterfaces.AsteriskManagerWebservice;
+import de.neue_phase.asterisk.ClickDial.jobs.JobFactory;
 import de.neue_phase.asterisk.ClickDial.serviceInterfaces.IServiceInterface;
 import de.neue_phase.asterisk.ClickDial.settings.*;
 import de.neue_phase.asterisk.ClickDial.settings.extractModels.ExtractAsteriskManagerInterfaceAuthData;
@@ -48,10 +43,8 @@ public class BaseController {
 	public final static boolean BRINGUP_SHUTDOWN_IF_FAIL = true;
 	public final static boolean BRINGUP_CONTINUE_IF_FAIL = false;
 
+    private final AtomicBoolean   runJobWatchdog    = new AtomicBoolean (true);
 
-	private Display     	displayRef 				= null;
-	private SettingsHolder 	settingsRef				= null;
-	
 	private final ControllerTypes type				= ControllerTypes.Base;
 	protected final Logger log 						= Logger.getLogger(this.getClass());
 	
@@ -62,14 +55,29 @@ public class BaseController {
 	private final ArrayList<ControllerInterface> widgetController 					= new ArrayList<ControllerInterface>();
 
 	private boolean jobWatchdogScheduled			= false;
-
 	private SettingsWebserviceKeystore keystore		= null;
-
 	private IServiceInterface lastExtract			= null;
 
-	public BaseController(Display displayRef, SettingsHolder settingsRef) {
-		this.displayRef 	= displayRef;
-		this.settingsRef 	= settingsRef;
+
+    private static BaseController instance = null;
+
+    /**
+     * Singleton getInstance
+     * @return
+     */
+    public static BaseController getInstance () {
+        if (instance == null)
+            instance = new BaseController ();
+
+        return instance;
+    }
+
+    /**
+     * constructor
+     */
+	private BaseController () {
+        if (instance != null)
+            throw new IllegalStateException("Already instantiated");
 	}
 
 	@Subscribe
@@ -91,9 +99,7 @@ public class BaseController {
 	private  ISettingsExtractModel onServiceInsufficientAuthDataEvent (ServiceInterfaceTypes type, Integer tryCount) {
 		/* check from where the setting request is sent */
 		log.debug("startSettingsProducer from " + type.toString());
-        try {
-            TimeUnit.SECONDS.sleep (1);
-        } catch (InterruptedException e) {}
+
 		switch (type) {
 			case Webservice: {
 				if (tryCount == 0 && keystore.hasWebserviceAuthData ())
@@ -124,10 +130,17 @@ public class BaseController {
 			case AsteriskManagerInterface: {
 
 				if (tryCount == 0)
-					return ((SettingsAsterisk) settingsRef.get(SettingsTypes.asterisk)).getAsteriskAuthData ();
+					return ((SettingsAsterisk) SettingsHolder.getInstance ().get (SettingsTypes.asterisk)).getAsteriskAuthData ();
 				else {
-                    ((TrayIconController) this.getController (ControllerTypes.TrayIcon)).popupError ("Authentication Data for Asterisk Manager Interface was incorrect.\n" +
-                                                                                                     "Connection will probably be restored in next AutoConfig run.");
+                    try {
+                        TrayIconController tray = ((TrayIconController) this.getController (ControllerTypes.TrayIcon));
+                        tray.popupError ("Authentication Data for Asterisk Manager Interface was incorrect.\n" +
+                                                "Connection will probably be restored in next AutoConfig run.");
+                    }
+                    catch (UnknownObjectException e) {
+                        log.error ("Could not get TrayController to popup balloon information - it was not registered?", e);
+                    }
+
 					return null;
 				}
 			}
@@ -177,8 +190,15 @@ public class BaseController {
 		if (type == ServiceInterfaceTypes.AsteriskManagerInterface) {
 			switch (problem) {
 				case ConnectionProblem:
-                    ((TrayIconController) this.getController (ControllerTypes.TrayIcon)).popupError ("Asterisk Manager Interface Connection has disconnected/failed.\n"+
-                                                                                                     "Application will not be able to signal incoming calls.");
+                    try {
+                        TrayIconController tray = ((TrayIconController) this.getController (ControllerTypes.TrayIcon));
+                        tray.popupError ("Asterisk Manager Interface Connection has disconnected/failed.\n" +
+                                                 "Application will not be able to signal incoming calls.");
+                    }
+                    catch (UnknownObjectException e) {
+                        log.error ("Could not get TrayController to popup balloon information - it was not registered?", e);
+                    }
+
 					return true;
 
 			}
@@ -189,7 +209,13 @@ public class BaseController {
 
     @Subscribe
     public void onManagerProblemResolveEvent (ManagerProblemResolveEvent event) {
-        ((TrayIconController) this.getController (ControllerTypes.TrayIcon)).popupInformation ("Asterisk Manager Interface Connection online/ok again");
+        try {
+            TrayIconController tray = ((TrayIconController) this.getController (ControllerTypes.TrayIcon));
+            tray.popupInformation ("Asterisk Manager Interface Connection online/ok again");
+        }
+        catch (UnknownObjectException e) {
+            log.error ("Could not get TrayController to popup balloon information - it was not registered?", e);
+        }
     }
 
 	/**
@@ -310,11 +336,12 @@ public class BaseController {
 					this.raiseJobCrashCount (entry.getKey ());
 
 					jobsHash.remove (type);
-                    // TODO: the job must be able to instantiate itself, otherwise this won't be work for generic Jobs
-					this.bringUp (new AutoConfigJob (new AutoConfig (this.settingsRef,
-																	 (AsteriskManagerWebservice) this.getServiceInterface (ServiceInterfaceTypes.Webservice))
-                                  ),
-								  BaseController.BRINGUP_CONTINUE_IF_FAIL);
+                    try {
+                        this.bringUp (JobFactory.createJob (type), BaseController.BRINGUP_CONTINUE_IF_FAIL);
+                    }
+                    catch (Exception e) {
+                            log.error ("Unable to spawn job.", e);
+                    }
 				}
 				else {
 					log.error ("Job '" + job.getName () + "' crashed too many times and now gets removed.");
@@ -329,12 +356,17 @@ public class BaseController {
 
 	public void scheduleJobWatchdog () {
 
-		if (jobWatchdogScheduled) {
-			log.error ("Tried to schedule JobWatchdog multiple times - skipped.");
-			return;
-		}
+        if (jobWatchdogScheduled) {
+            log.error ("Tried to schedule JobWatchdog multiple times - skipped.");
+            return;
+        }
 
-		displayRef.timerExec (ControllerConstants.JobWatchdogInterval, new Runnable () {
+        if (!runJobWatchdog.get ()) {
+            log.info ("Job Watchdog disabled.");
+            return;
+        }
+
+		Display.getCurrent ().timerExec (ControllerConstants.JobWatchdogInterval, new Runnable () {
 			@Override
 			public void run () {
 				checkAndRestartJobs ();
@@ -345,20 +377,51 @@ public class BaseController {
 	}
 
 	public void iterate () {
-		while (!displayRef.isDisposed()) {
+        Display displayRef = Display.getCurrent ();
+
+		while (!displayRef.isDisposed ()) {
 			if (!displayRef.readAndDispatch ()) {
 				displayRef.sleep ();
 			}
 		}
 	}
-	
-	public ControllerInterface getController (ControllerTypes type) {
-		return controllerHash.get(type);
+
+    /**
+     * Interface to get a specific controller
+     * @param type the controller type for identification (1:1 mapping)
+     * @return the controller object
+     * @throws UnknownObjectException is thrown when the controller with the specified type does not exist-at-all or exist-anymore
+     */
+
+	public ControllerInterface getController (ControllerTypes type) throws UnknownObjectException {
+        if (!controllerHash.containsKey (type))
+            throw new UnknownObjectException ("Controller with type '"+type+"' not registered");
+
+        return controllerHash.get(type);
 	}
-	public IServiceInterface getServiceInterface (ServiceInterfaceTypes type) {
+
+    /**
+     * Interface to get a specific ServiceInterface
+     * @param type the type of the ServiceInterface for identification (1:1 mapping)
+     * @return the ServiceInterface obj
+     * @throws UnknownObjectException is thrown when the controller with the specified type does not exist-at-all or exist-anymore
+     */
+	public IServiceInterface getServiceInterface (ServiceInterfaceTypes type) throws UnknownObjectException {
+        if (!servicesHash.containsKey (type))
+            throw new UnknownObjectException ("ServiceInterface with type '"+type+"' not registered");
+
 		return servicesHash.get(type);
 	}
-	public IJob getJob (JobTypes type) {
+
+    /**
+     * Interface to get a specific job objet
+     * @param type The type of the job for identification (1:1 mapping)
+     * @return the job requestes
+     * @throws UnknownObjectException
+     */
+	public IJob getJob (JobTypes type) throws UnknownObjectException {
+        if (!jobsHash.containsKey (type))
+                throw new UnknownObjectException ("Job with type '"+type+"' not registered");
 		return jobsHash.get(type);
 	}
 	
@@ -373,8 +436,10 @@ public class BaseController {
 		try {
 
 			log.debug("Closing Jobs ... ");
-			for (Entry<JobTypes,IJob> jobEntry : jobsHash.entrySet ())
-				jobEntry.getValue ().shutdown ();
+			for (Entry<JobTypes,IJob> jobEntry : jobsHash.entrySet ()) {
+                runJobWatchdog.set(false);
+                jobEntry.getValue ().shutdown ();
+            }
 
 
 			log.debug("Closing ServiceInterfaces ... ");
@@ -385,7 +450,7 @@ public class BaseController {
 			for (Entry<ControllerTypes,ControllerInterface> controllerEntry : controllerHash.entrySet ())
 				controllerEntry.getValue ().closeDown ();
 
-			log.debug("Closing Jobs > ServiceInterfaces > Controllers done!");
+			log.debug ("Closing Jobs > ServiceInterfaces > Controllers done!");
 		}
 		catch (Exception e) {
 			log.error("Warning: we had Exceptions while closing the controllers! But now watch the StackTrace ...", e);
@@ -396,6 +461,9 @@ public class BaseController {
 		System.exit (0);
 	}
 
+    /**
+     * load the keystore and get user/password for the webservice (if user saved it)
+     */
 	public void initKeystore () {
 		try {
 			keystore = new SettingsWebserviceKeystore ();
@@ -404,6 +472,11 @@ public class BaseController {
 		}
 	}
 
+
+    /**
+     * handler for events (over EventBus/AsyncEventBus) which was not subscribed on
+     * @param e the event obj
+     */
     @Subscribe public void deadEventHandler (DeadEvent e) {
         log.debug ("Dead event found: " + e.getEvent ().toString ());
     }

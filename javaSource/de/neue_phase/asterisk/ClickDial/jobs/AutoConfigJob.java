@@ -6,6 +6,7 @@ import de.neue_phase.asterisk.ClickDial.controller.exception.InitException;
 import de.neue_phase.asterisk.ClickDial.settings.AutoConfig;
 import org.apache.log4j.Logger;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class AutoConfigJob implements Runnable, IJob {
 
@@ -13,7 +14,7 @@ public class AutoConfigJob implements Runnable, IJob {
     private final Random random    = new Random();
     private AutoConfig autoConfig  = null;
     protected final Logger log 	   = Logger.getLogger(this.getClass());
-    private Boolean shutdown       = false;
+    private AtomicBoolean shutdown       = new AtomicBoolean (false);
     private Thread runner          = null;
 
     private Integer defaultCheckInterval = ServiceConstants.AutoConfigJobInterval + random.nextInt (ServiceConstants.AutoConfigJobIntervalVariance);
@@ -57,7 +58,7 @@ public class AutoConfigJob implements Runnable, IJob {
             if (! this.autoConfig.checkAutoConfigData ())
                 this.log.error ("Failed to check AutoConfig data. Connection Problem?");
 
-        } while (!shutdown);
+        } while (!shutdown.get ());
 
     }
 
@@ -65,8 +66,8 @@ public class AutoConfigJob implements Runnable, IJob {
      * Shutdown the AutoConfigJob
      */
     @Override
-    public synchronized void shutdown () {
-        this.shutdown = true;
+    public void shutdown () {
+        shutdown.set (true);
         this.runner.interrupt ();
     }
 

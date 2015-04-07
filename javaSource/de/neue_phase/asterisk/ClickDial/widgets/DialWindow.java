@@ -249,18 +249,26 @@ public class DialWindow {
 	public String getText () {
 		return this.dialArea.getText();		
 	}
-	
-	/**
+
+    /**
+     * set the text of the dial window
+     * @param newText The new text to be filled into the dialArea
+     */
+    public void setText (String newText) {
+        this.dialArea.setText(newText);
+    }
+
+    /**
 	 * close down routine
 	 */
 	public void dispose () {
 		if (! rightClickMenu.isDisposed ())
             rightClickMenu.dispose();
 
-        if (! webserviceConnectionState.isDisposed ())
+        if (webserviceConnectionState != null && ! webserviceConnectionState.isDisposed ())
             webserviceConnectionState.dispose();
 
-        if (!managerConnectionState.isDisposed ())
+        if (managerConnectionState != null && !managerConnectionState.isDisposed ())
             managerConnectionState.dispose ();
 
         if (!shell.isDisposed ())

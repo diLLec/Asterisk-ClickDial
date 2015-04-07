@@ -38,7 +38,7 @@ import de.neue_phase.asterisk.ClickDial.widgets.util.CallWindowWindowPlacer;
 
 public class CallWindowController extends ControllerBaseClass implements ManagerEventListener, Runnable {
 
-	private SettingsHolder settings 	= SettingsHolder.getCurrent();
+	private SettingsHolder settings 	= SettingsHolder.getInstance();
 	
 	/* active windows - Relation "uniqueId" <> "Window" */
 	private HashMap<String, CallWindow> windowArray = new HashMap<String, CallWindow>(InterfaceConstants.MaxCallWindowInstances);

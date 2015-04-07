@@ -18,4 +18,5 @@ public interface ControllerInterface {
 	public void registerInsufficientSettingsListener ( InsufficientSettingsListener l );
 	public void closeDown () ;
 	public boolean isWidgetController();
+
 }

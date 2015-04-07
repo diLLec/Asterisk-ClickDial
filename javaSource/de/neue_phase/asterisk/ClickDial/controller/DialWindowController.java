@@ -4,9 +4,11 @@ import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.google.common.eventbus.Subscribe;
+import de.neue_phase.asterisk.ClickDial.controller.exception.UnknownObjectException;
 import de.neue_phase.asterisk.ClickDial.controller.util.AsteriskCallerId;
 import de.neue_phase.asterisk.ClickDial.eventbus.EventBusFactory;
 import de.neue_phase.asterisk.ClickDial.eventbus.events.ExecuteCTICallEvent;
+import de.neue_phase.asterisk.ClickDial.eventbus.events.TransferClipboardToDialWindowEvent;
 import de.neue_phase.asterisk.ClickDial.serviceInterfaces.AsteriskManagerInterface;
 import de.neue_phase.asterisk.ClickDial.serviceInterfaces.AsteriskManagerWebservice;
 import org.asteriskjava.live.CallerId;
@@ -58,8 +60,14 @@ implements IContentProposalListener, SelectionListener, IContentProposalListener
 	public DialWindowController(SettingsHolder settingsRef, BaseController b) {
 		super(settingsRef, b);
 		type		= ControllerTypes.DialWindow;
-		asCtrl = (AsteriskManagerInterface) bC.getServiceInterface (ServiceInterfaceTypes.AsteriskManagerInterface);
-		asWeb  = (AsteriskManagerWebservice) bC.getServiceInterface (ServiceInterfaceTypes.Webservice);
+
+        try {
+            asCtrl = (AsteriskManagerInterface) bC.getServiceInterface (ServiceInterfaceTypes.AsteriskManagerInterface);
+            asWeb  = (AsteriskManagerWebservice) bC.getServiceInterface (ServiceInterfaceTypes.Webservice);
+        } catch (UnknownObjectException e) {
+            log.error ("Critical Internal error - AsteriskManagerInterface/AsteriskManagerWebservice not registered", e);
+            bC.bailOut ();
+        }
 	}
 	
 	public void startUp () throws InitException  {
@@ -150,14 +158,17 @@ implements IContentProposalListener, SelectionListener, IContentProposalListener
         findProposalRunning.set (false);
 	}
 
-	public void widgetDefaultSelected(SelectionEvent arg0) {
-		// TODO Auto-generated method stub
-		
-	}
-	/*
+    /**
+     * not used
+     * @param arg0
+     */
+	public void widgetDefaultSelected(SelectionEvent arg0) {}
+
+	/**
 	 * implementing SelectionListener
 	 *  - called when DialWindow right Click menu is opened 
-	 *    and some item is clicked 
+	 *    and some item is clicked
+     * @param arg0 the event
 	 */
 	public void widgetSelected(SelectionEvent arg0) {
 		log.debug("Clicked a MenuItem : " + ((MenuItem) arg0.widget).getText());
@@ -167,7 +178,12 @@ implements IContentProposalListener, SelectionListener, IContentProposalListener
 			bC.bailOut();
 		}
 		else if (text.equals("open configuration")) {
-            ((SettingsController) bC.getController (ControllerTypes.Settings)).openAsteriskSettingsWindow ();
+            try {
+                SettingsController settings = (SettingsController) bC.getController (ControllerTypes.Settings);
+                settings.openAsteriskSettingsWindow ();
+            } catch (UnknownObjectException e) {
+                log.error ("SettingsController not registered - can't show settings window.", e);
+            }
 		}
 		else if (text.equals("about")) {
 			/* start splash screen in 'about' mode */
@@ -177,6 +193,12 @@ implements IContentProposalListener, SelectionListener, IContentProposalListener
 
 	}
 
+    @Subscribe public void handleTransferClipboardEvent (TransferClipboardToDialWindowEvent event) {
+        dialWindow.setText (event.getTransferString ());
+    }
+
+
+    /* IDE says "never used?"
 	public String getAsteriskConnectionState () {
 		return asCtrl.getUsedUsername() +  ": " + asCtrl.getState().toString();
 	}
@@ -198,7 +220,7 @@ implements IContentProposalListener, SelectionListener, IContentProposalListener
 	public String getWebserviceConnectionState () {
 		return asCtrl.getUsedUsername();
 	}
-
+    */
 
 	/*
 	 * close every resources

@@ -29,7 +29,8 @@ public class ControllerConstants {
 	}
 
 	public enum JobTypes {
-		AutoConfig
+		AutoConfig,
+        WorkstateGetter
 	}
 	/**
 	 * @see de.neue_phase.asterisk.ClickDial.controller.DialWindowController
