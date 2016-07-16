@@ -6,16 +6,13 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map.Entry;
 
+import com.google.common.eventbus.Subscribe;
 import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants;
+import de.neue_phase.asterisk.ClickDial.eventbus.EventBusFactory;
 import org.apache.log4j.Logger;
 import org.asteriskjava.live.CallerId;
 import org.asteriskjava.manager.ManagerEventListener;
-import org.asteriskjava.manager.event.HangupEvent;
-import org.asteriskjava.manager.event.ManagerEvent;
-import org.asteriskjava.manager.event.NewChannelEvent;
-import org.asteriskjava.manager.event.NewExtenEvent;
-import org.asteriskjava.manager.event.NewStateEvent;
-import org.asteriskjava.manager.event.OriginateResponseEvent;
+import org.asteriskjava.manager.event.*;
 import org.eclipse.swt.widgets.Display;
 
 import de.neue_phase.asterisk.ClickDial.constants.InterfaceConstants;
@@ -36,7 +33,7 @@ import de.neue_phase.asterisk.ClickDial.widgets.util.CallWindowWindowPlacer;
  * @author Michael Konietzny <Michael.Konietzny@neue-phase.de>
  */
 
-public class CallWindowController extends ControllerBaseClass implements ManagerEventListener, Runnable {
+public class CallWindowController extends ControllerBaseClass implements Runnable {
 
 	private SettingsHolder settings 	= SettingsHolder.getInstance();
 	
@@ -69,7 +66,10 @@ public class CallWindowController extends ControllerBaseClass implements Manager
   	public CallWindowController(SettingsHolder settingsRef, BaseController b) {
 		super(settingsRef, b);
 		type		= ControllerTypes.CallWindow;
-  		schedule(); // -- schedule ourself if someone instantiates us
+		EventBusFactory.getDisplayThreadEventBus ().register (this);
+
+		schedule (); // -- schedule ourself if someone instantiates us
+
 	}
 
 	/**
@@ -156,79 +156,146 @@ public class CallWindowController extends ControllerBaseClass implements Manager
 		newEventLock.releaseLock();
 	}
 
-	
-	/**
-	 * internal function to handle Manager Events coming from AsteriskController.
-	 * This is needed, while the one-Thread architecture of SWT won't allow us
-	 * to handle the event directly as it reaches the AsteriskController Callback 
-	 * function
-	 * @param arg0
-	 */
-	private void handleManagerEvent (ManagerEvent arg0) {
-		if (arg0 instanceof org.asteriskjava.manager.event.NewStateEvent)
-		{
-			NewStateEvent event = (NewStateEvent) arg0;
-			if ( ! ourChannel( event.getChannel() )   )
-				return; 
+    /**
+     * NewChannelEvents are thrown when the _user_ gets a
+     * new call. The function then generates a new call window.
+     * @param event
+     */
+    @Subscribe
+    public void handleNewChannelEvent (NewStateEvent event) {
+        /**
+         * TODO: add sample NewChannel Event
+		 *
+         * New Cannel Event that indicates an outgoing call of the user
+         * ------------------------------------------------------------
+		 * Event: Newchannel
+		 * Privilege: call,all
+		 * Channel: SIP/2448-00000001
+		 * ChannelState: 0
+		 * ChannelStateDesc: Down
+		 * CallerIDNum: 2448
+		 * CallerIDName: Michael Konietzny
+		 * AccountCode: #18#
+		 * Exten: 7066
+		 * Context: SIP
+		 * Uniqueid: sf070asterisk-1435163616.1
+		 * ChanVariable(SIP/2448-00000001): CDR(accountcode)=#18#
+         *
+         *
+		 *
+         */
 
-			if (windowArray.containsKey(event.getUniqueId())) {
+        log.debug("NewChannelEvent. Opening new window");
+        newWindow(	event.getUniqueId(),
+                      new CallerId(event.getCallerIdName(), event.getCallerIdNum()).toString(),
+                      "",
+                      asteriskToOurEnumCallState(event.getState()));
+    }
+
+    private void handleNewCall () {
+
+    }
+
+
+    /**
+     * NewStateEvents are thrown if a user channel has a new
+     * state (Ringing, ...). The function then updates the call window
+     * based on the uniqueId
+     * @param event
+     */
+	@Subscribe
+	public void handleNewStateEvent (NewStateEvent event) {
+        /**
+         * TODO: add a sample NewStateEvent
+         *
+         * A call to the user got a new state
+         * ----------------------------------------------------------
+         * Event: Newstate
+         * Privilege: call,all
+         * Channel: SIP/2448-00000007
+         * ChannelState: 5
+         * ChannelStateDesc: Ringing
+         * CallerIDNum: 2448
+         * CallerIDName: Michael Konietzny
+         * ConnectedLineNum: 7066
+         * ConnectedLineName: Kecke Tristan
+         * Uniqueid: sf070asterisk-1435164394.7
+         * ChanVariable(SIP/2448-00000007): CDR(accountcode)=#18#
+         *
+         * Event: Newstate
+         * Privilege: call,all
+         * Channel: SIP/2448-00000007
+         * ChannelState: 6
+         * ChannelStateDesc: Up
+         * CallerIDNum: 2448
+         * CallerIDName: Michael Konietzny
+         * ConnectedLineNum: 7066
+         * ConnectedLineName: Kecke Tristan
+         * Uniqueid: sf070asterisk-1435164394.7
+         * ChanVariable(SIP/2448-00000007): CDR(accountcode)=#18#
+
+         */
+		if ( ! ourChannel( event.getChannel() )   )
+			return;
+
+		if (windowArray.containsKey(event.getUniqueId())) {
 				/* new state of an existing call Call */
-				log.debug("Updateing state of window" + event.getUniqueId() + " to " + event.getState());
-				windowArray.get(event.getUniqueId()).updateState (asteriskToOurEnumCallState (event.getState()));
-				windowArray.get(event.getUniqueId()).updateFrom (new CallerId(event.getCallerIdName(), event.getCallerIdNum()).toString());
-			}
-			else  {
+			log.debug("Updateing state of window" + event.getUniqueId() + " to " + event.getState());
+			windowArray.get(event.getUniqueId()).updateState (asteriskToOurEnumCallState (event.getState()));
+			windowArray.get(event.getUniqueId()).updateFrom (new CallerId(event.getCallerIdName(), event.getCallerIdNum()).toString());
+		}
+		else  {
 				/* new call */
-				log.debug("NewStateEvent. Opening new window");
-				newWindow(	event.getUniqueId(), 
-							new CallerId(event.getCallerIdName(), event.getCallerIdNum()).toString(), 
-							"Micha", 
-							asteriskToOurEnumCallState(event.getState()));
-			}
+			log.debug("NewStateEvent. Opening new window");
+			newWindow(	event.getUniqueId(),
+						  new CallerId(event.getCallerIdName(), event.getCallerIdNum()).toString(),
+						  "Micha",
+						  asteriskToOurEnumCallState(event.getState()));
 		}
-		else if (arg0 instanceof NewChannelEvent) {
-			NewChannelEvent event = (NewChannelEvent) arg0;
-			if ( ! ourChannel( event.getChannel() )   )
-				return; 
-			
-			log.debug("NewChannelEvent. Opening new window");
-			newWindow(	event.getUniqueId(), 
-						new CallerId(event.getCallerIdName(), event.getCallerIdNum()).toString(), 
-						"", 
-						asteriskToOurEnumCallState(event.getState()));
-		}
-		else if (arg0 instanceof NewExtenEvent) {
-			NewExtenEvent event = (NewExtenEvent) arg0;
-			if ( ourChannel( event.getChannel() ) &&
-				 windowArray.containsKey(event.getUniqueId())) 
-			{
-				log.debug("Updateing 'to' of window" + event.getUniqueId() + " to " + event.getExtension());
-				windowArray.get(event.getUniqueId()).updateTo (event.getExtension());
-				windowArray.get(event.getUniqueId()).updateApp (event.getApplication());
-			}
-		}
-		else if (arg0 instanceof org.asteriskjava.manager.event.HangupEvent)
-		{
-			HangupEvent event = (HangupEvent) arg0;
-			if ( ! ourChannel(event.getChannel()) &&  windowArray.containsKey(event.getUniqueId()) )
-				return; 
+	}
 
-			log.debug("Hangup Event. Closing " + event.getUniqueId());
-			windowArray.get(event.getUniqueId()).updateState (CallState.DISCONNECTED);
-			scheduleWindowClose ( event.getUniqueId(), 2 );
-		}
-		else if ( arg0 instanceof org.asteriskjava.manager.event.OriginateResponseEvent) {
-			OriginateResponseEvent event = (OriginateResponseEvent) arg0;
-			
-			if (event.getResponse().equalsIgnoreCase("Failure")) {
-				newWindow(	event.getActionId(), 
-							new CallerId(event.getCallerIdName(), event.getCallerIdNum()).toString(), 
-							"Micha", 
-							CallState.FAILED);
-				scheduleWindowClose ( event.getActionId(), 2);
-			}
 
-		}
+	@Subscribe
+	public void handleUserEvent (UserEvent event) {
+        /**
+         * TODO: add sample UserEvents Event
+         *
+         * New Incoming call to the logged in user
+         * ---------------------------------------
+         * Event: UserEvent
+         * Privilege: user,all
+         * UserEvent: CustomUserCallEvent_NewCall
+         * Uniqueid: sf070asterisk-1435163762.2
+         * AccountAid: #18#
+         * Exten: 2448
+         * Context: SIP
+         * DialString: SIP/2448;15-DAHDI/g2/001713082748;35-
+         *
+         * Incoming call dials next target
+         * ----------------------------------------
+         * Event: UserEvent
+         * Privilege: user,all
+         * UserEvent: CustomUserCallEvent_NextTarget
+         * Uniqueid: sf070asterisk-1435163762.2
+         * AccountAid: #18#
+         * Target: SIP/2448
+         *
+         *
+         */
+    }
+
+	@Subscribe
+	public void handleHangupEvent (NewStateEvent event) {
+        /**
+         * TODO: add sample HangupEvent Event
+         *
+         */
+		if ( ! ourChannel(event.getChannel()) &&  windowArray.containsKey(event.getUniqueId()) )
+			return;
+
+		log.debug("Hangup Event. Closing " + event.getUniqueId());
+		windowArray.get(event.getUniqueId()).updateState (CallState.DISCONNECTED);
+		scheduleWindowClose ( event.getUniqueId(), 2 );
 	}
 
 	/**
@@ -265,20 +332,7 @@ public class CallWindowController extends ControllerBaseClass implements Manager
 	 * to spawn new and close old windows
 	 */
 	public void run() {
-		
-		// -- debug
-		//log.debug("CallWindowController");
-		
-		// -- check the event queue for new entries
-		// - -- this will pop up new windows 
-		// - -- this will set new states or attributes of existing CallWindow objects
-		newEventLock.getWriteLock();
-		for( ManagerEvent e : newEventArray)
-			handleManagerEvent(e);
 
-		newEventArray.clear();
-		newEventLock.releaseLock();
-		
 		// -- iterate through the windows and react on "state"	
 
 		Iterator<Entry<String, CallWindow>> i = windowArray.entrySet().iterator();
@@ -318,7 +372,7 @@ public class CallWindowController extends ControllerBaseClass implements Manager
 	}
 
 	/**
-	 * schedule ourselfs every 500 milis
+	 * schedule ourself every 500 milis
 	 */
 	public void schedule() {
 		display.timerExec(500, this);

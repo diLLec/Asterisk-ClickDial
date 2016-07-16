@@ -200,6 +200,7 @@ public class SettingsWindow implements Listener {
 		while (i.hasNext()) 
 		{
 			entry = i.next();
+
 			// -- we create the 'uber' item
 			expander = new TreeItem (tree, SWT.NORMAL);
 			expander.setText(entry.getKey().toString());
@@ -227,8 +228,6 @@ public class SettingsWindow implements Listener {
 				f = null;
 			}
 		}
-
-		arrow = null;
 
 		tree.addListener(SWT.MouseDown, this);
 		
@@ -290,7 +289,6 @@ public class SettingsWindow implements Listener {
 	 * hide current settings view
 	 *
 	 */
-	
 	private void hideCurrentView () {
 		log.debug ("Hiding view "+ this.currentView);
 		
@@ -310,7 +308,6 @@ public class SettingsWindow implements Listener {
 	 * build the new elements out of field definitions
 	 * @param type the new view which should be shown
 	 */
-	
 	private void showView ( SettingsConstants.SettingsTypes type ) {
 		
 		log.debug ("Showing new view "+ type);
@@ -465,9 +462,8 @@ public class SettingsWindow implements Listener {
 	
 	/** 
 	 * the function which is called when we need to closedown
-	 * @param returnCode ?
+	 * @param returnCode The returncode which is set after the widget is closed down
 	 */
-	
 	private void closeMe (int returnCode) {
 		
 		this.saveAll ();

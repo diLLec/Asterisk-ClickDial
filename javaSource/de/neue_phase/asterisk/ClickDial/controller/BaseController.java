@@ -170,7 +170,7 @@ public class BaseController {
     }
 
     private Boolean onProblemEvent (ServiceInterfaceTypes type, ServiceInterfaceProblems problem, Integer tryCount) {
-		log.debug("handleServiceInterfaceContinueOrNot from " + type.toString() + " with problem " + problem.toString ());
+		log.debug("onProblemEvent from " + type.toString() + " with problem " + problem.toString ());
 		if (type == ServiceInterfaceTypes.Webservice) {
 			switch (problem) {
 				case ConnectionProblem:
@@ -182,7 +182,7 @@ public class BaseController {
 					ua.addButton ("quit", 1);
 					switch (ua.open ()) {
 						case "retry": return true;
-						case "quit": this.bailOut ();
+						case "quit": this.bailOut (); return false;
 					}
 			}
 		}

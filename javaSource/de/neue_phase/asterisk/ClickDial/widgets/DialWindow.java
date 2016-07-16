@@ -262,7 +262,7 @@ public class DialWindow {
 	 * close down routine
 	 */
 	public void dispose () {
-		if (! rightClickMenu.isDisposed ())
+		if (rightClickMenu != null && ! rightClickMenu.isDisposed ())
             rightClickMenu.dispose();
 
         if (webserviceConnectionState != null && ! webserviceConnectionState.isDisposed ())
@@ -288,7 +288,6 @@ public class DialWindow {
             shell.setVisible (true);
             shell.setFocus ();
         }
-
 	}
 
     /**

@@ -10,15 +10,14 @@ import de.neue_phase.asterisk.ClickDial.eventbus.events.SettingsUpdatedEvent;
 import org.apache.http.auth.AUTH;
 import org.apache.log4j.Logger;
 
-import org.asteriskjava.manager.AuthenticationFailedException;
-import org.asteriskjava.manager.ManagerConnection;
-import org.asteriskjava.manager.ManagerConnectionFactory;
-import org.asteriskjava.manager.ManagerConnectionState;
+import org.asteriskjava.manager.*;
 
 import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants;
 import de.neue_phase.asterisk.ClickDial.constants.SettingsConstants.SettingsTypes;
 import de.neue_phase.asterisk.ClickDial.controller.exception.InitException;
+import org.asteriskjava.manager.event.*;
 
+import java.awt.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -29,18 +28,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @author Michael Konietzny <Michael.Konietzny@neue-phase.de>
  */
 
-public class AsteriskManagerInterface implements IServiceInterface, Runnable {
-
-	private  enum ConnectionState {
-		NOT_CONNECTED,
-		CONNECTED_AUTH_FAIL,
-		AUTHENTICATED
-	}
+public class AsteriskManagerInterface implements IServiceInterface, Runnable, ManagerEventListener {
 
     protected Thread        interfaceCheckThread            = null;
 	protected AtomicBoolean problemTriggered				= new AtomicBoolean (false);
 	protected AtomicBoolean shutdownInterface				= new AtomicBoolean (false);
-	private volatile ConnectionState	internalState		= ConnectionState.NOT_CONNECTED;
 	private ControllerConstants.ServiceInterfaceTypes type 	= ControllerConstants.ServiceInterfaceTypes.AsteriskManagerInterface;
 	private ManagerConnection 			mcon 				= null;
 	private ManagerConnectionFactory 	mconfact 			= null;
@@ -114,7 +106,7 @@ public class AsteriskManagerInterface implements IServiceInterface, Runnable {
         Integer discoStateIntervals = 0;
 
         do {
-            log.debug ("ManagerInterface: internaleState = " + internalState.toString () + " mcon state = " + mcon.getState ().toString () + " discoIntervals " + discoStateIntervals);
+            log.debug ("ManagerInterface: mcon state = " + mcon.getState ().toString () + " discoIntervals " + discoStateIntervals);
             if (mcon.getState () == ManagerConnectionState.DISCONNECTED) {
                 discoStateIntervals += 1;
 
@@ -135,7 +127,6 @@ public class AsteriskManagerInterface implements IServiceInterface, Runnable {
                 if (problemTriggered.get ()) {
                     problemTriggered.set (false);
                     discoStateIntervals = 0;
-                    internalState = ConnectionState.AUTHENTICATED;
                     EventBusFactory.getDisplayThreadEventBus ().post (new ManagerProblemResolveEvent ());
                 }
             }
@@ -202,6 +193,8 @@ public class AsteriskManagerInterface implements IServiceInterface, Runnable {
 
 		mcon 	 = mconfact.createManagerConnection();
 		mcon.setSocketTimeout (timeout);
+		mcon.addEventListener (this);
+
 		try {
 			mcon.login();
 			log.debug("Manager Connection established");
@@ -209,7 +202,6 @@ public class AsteriskManagerInterface implements IServiceInterface, Runnable {
 		}
 		catch (AuthenticationFailedException e) {
             log.debug("Manager Connection authentication failed");
-			this.internalState = ConnectionState.CONNECTED_AUTH_FAIL;
 		}
 		catch (Exception e) {
 			log.debug("Manager Connection could not be established", e);
@@ -232,5 +224,16 @@ public class AsteriskManagerInterface implements IServiceInterface, Runnable {
 		return mcon.getUsername();
 	}
 
+    /**
+     * event handler for manager Events
+     * @param managerEvent
+     */
+    @Override
+    public void onManagerEvent (ManagerEvent managerEvent) {
+        if (managerEvent instanceof NewStateEvent || managerEvent instanceof UserEvent || managerEvent instanceof NewChannelEvent ||
+            managerEvent instanceof HangupEvent) { // filter at least a little what comes through
+            EventBusFactory.getDisplayThreadEventBus ().post (managerEvent);
+        }
 
+    }
 }

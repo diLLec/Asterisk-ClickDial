@@ -1,0 +1,1 @@
+cl -Ic:\Programme\Java\jdk1.6.0_01\include -Ic:\Programme\Java\jdk1.6.0_01\include\win32 -LD de_neue_phase_asterisk_ClickDial_widgets_CallWindow.cpp -FeCallWindowImpl.dll -EHsc /link /clr User32.lib

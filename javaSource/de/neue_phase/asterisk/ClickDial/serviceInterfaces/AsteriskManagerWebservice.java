@@ -36,7 +36,6 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
         NOT_CONNECTED, // no connection possible
         CONNECTED,     // connected but not authenticated
         AUTHENTICATED, // connected _and_ authenticated
-
     }
 
     protected Thread interfaceCheckThread       = null;
@@ -357,7 +356,8 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
      * @param event the event with the call data
      */
     @Subscribe public void onExecuteCTICallEvent (ExecuteCTICallEvent event) {
-        originateCall(event.getNumberToCall (), event.getTargetCallerId ());
+        event.setResponse (originateCall(event.getNumberToCall (),
+                                         event.getTargetCallerId ()));
     }
 
     /**
@@ -408,7 +408,7 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
     }
 
     /**
-     * Set Workstate
+     * Set workstate
      * @return Successful/Failed
      */
     public Boolean setWorkstate (InterfaceConstants.WorkstateTypes targetWorkstate) {
@@ -426,7 +426,7 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
                 JSONObject body = jsonResponse.getBody ().getObject ();
                 String status = (String) body.get ("responseStatus");
                 if (status.equals ("OK")) {
-                    log.info ("Workstate successfully changed to " + targetWorkstate.toString ());
+                    log.info ("workstate successfully changed to " + targetWorkstate.toString ());
                     return true;
                 }
                 else {
