@@ -202,7 +202,7 @@ public class BaseController {
 					ua.addButton ("quit", 1);
 					switch (ua.open ()) {
 						case "retry": return true;
-						case "quit": this.bailOut ();
+						case "quit": this.bailOut (); return false;
 					}
 			}
 		}
