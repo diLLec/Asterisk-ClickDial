@@ -9,7 +9,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.util.*;
 import java.util.Map.Entry;
@@ -34,14 +33,11 @@ public class SettingsHolder {
 							= new HashMap<SettingsConstants.SettingsTypes, SettingsAbstractMaster>();
 	
 	/* saving the relation between ExpanderName <> SettingsAbstractMaster */
-	
 	private final HashMap<SettingsConstants.SettingsExpander, ArrayList<SettingsAbstractMaster>> settingsToExpander 
 							= new HashMap<SettingsConstants.SettingsExpander, ArrayList<SettingsAbstractMaster>>();
 	
-	
 	private final Logger log                = Logger.getLogger(this.getClass());
 	private static SettingsHolder instance	= null;
-	
 	
 	/**
 	 * static function, which will return the only SettingsHolder in this Application
@@ -62,21 +58,17 @@ public class SettingsHolder {
             throw new IllegalStateException("Already instantiated");
     }
 
-
     /**
 	 * called if we need to register a new SettingsAbstractMaster into our
 	 * settings HashMap
-	 * @param setting
+	 * @param setting the settings object which should be registered
 	 */
-	
 	private void registerSetting (SettingsAbstractMaster setting) 
 	{
 		log.info ("registerSetting: registered '" + setting.getType().toString() + "' Setting");
-		
-		
-		
+
 		/* fast indexing for SettingsType */ 
-		settings.put(setting.getType()				, setting);
+		settings.put(setting.getType(), setting);
 		
 		/* fast indexing for SettingsExpander */
 		SettingsConstants.SettingsExpander exp = setting.getExpander();
@@ -89,13 +81,19 @@ public class SettingsHolder {
 			settingsToExpander.put(exp, newArr);
 		}
 	}
-	
-	private SettingsAbstractMaster migrateData ( Class<?> c, SettingsAbstractMaster from ) {
+
+    /**
+     * called when the code version differs from the serialized objects
+     * @param targetSettingsClass The target Settings class which should be used for instantiation
+     * @param from The source object to migrate data from
+     * @return the instance of the new Settings object filled with the data of the old object
+     */
+	private SettingsAbstractMaster migrateData (Class<?> targetSettingsClass, SettingsAbstractMaster from) {
 		log.debug ("We need to migrate data!");
 
 		SettingsAbstractMaster instance = null;
 		try {
-			instance = (SettingsAbstractMaster) c.newInstance();
+			instance = (SettingsAbstractMaster) targetSettingsClass.newInstance();
 
 			/* migrate fields */
 			instance.migrateFrom(from);			
@@ -104,66 +102,62 @@ public class SettingsHolder {
 			log.error("Exception while running migration",ex);
 		}			
 
-
-		return (SettingsAbstractMaster) instance;		
+		return instance;
 	}
 	
 	/**
 	 * newTile gets a classname. with it it does the following
 	 * 	- look if there may be an existing configuration file in configSearchLocation
 	 * 	- if not - create an instance of 'c' 
-	 * @param c
-	 * @return
+	 * @param targetSettingsClass The target Settings class which should be used for instantiation
+	 * @return the instance of the new Settings "tile"
 	 */
-	public boolean newTile (Class<?> c) {
+	public boolean newTile (Class<?> targetSettingsClass) {
 		
-		File potentionalSettingsFile = new File(SettingsConstants.configSearchLocation + 
-												c.getSimpleName() +
+		File potentialSettingsFile = new File(SettingsConstants.configSearchLocation + targetSettingsClass.getSimpleName() +
 												SettingsConstants.configSearchSuffix
 												);
 		
-		if (potentionalSettingsFile.exists()) {
+		if (potentialSettingsFile.exists()) {
 			
 			/* settings file exists - load it */
 			
 			SettingsAbstractMaster obj; 
-			log.debug("Reading " + potentionalSettingsFile.getAbsolutePath());
+			log.debug ("Reading " + potentialSettingsFile.getAbsolutePath ());
 			try
 			{
-				FileInputStream fis 			= new FileInputStream(potentionalSettingsFile);
+				FileInputStream fis 			= new FileInputStream(potentialSettingsFile);
 				ObjectInputStream in 			= new ObjectInputStream(fis);
 				obj								= (SettingsAbstractMaster) in.readObject();
 				if (obj.version < SettingsConstants.SettingsAbstractMaster_version) {
 					// -- the loaded data is OLD! migrate data.
-					log.info("You have an old version of "+c.getName()+" (your="+obj.version+" current="+SettingsConstants.SettingsAbstractMaster_version+"). I will migrate your data now");
-					registerSetting(migrateData(c, obj));
-					
-					// -- mark the loaded object to be removed by next gc run
-					obj = null;
+					log.info("You have an old version of "+targetSettingsClass.getName()+
+                                     " (your="+obj.version+" current="+SettingsConstants.SettingsAbstractMaster_version+"). I will migrate your data now");
+					registerSetting(migrateData(targetSettingsClass, obj));
 				}
 				else
 					registerSetting (obj);
 
 				in.close(); fis.close();
 			} catch(Exception ex) {
-				log.error ("Failed to read configuration file '" + potentionalSettingsFile.getAbsolutePath()+"'", ex);
+				log.error ("Failed to read configuration file '" + potentialSettingsFile.getAbsolutePath()+"'", ex);
 			}
 		}
 		else {
 			
 			/* settings file is not existent - create an instance of the class */
 			
-			log.debug("Configuration File "+ potentionalSettingsFile.getAbsolutePath()+ " does not exist");
-			Object instance = null;
+			log.debug("Configuration File "+ potentialSettingsFile.getAbsolutePath()+ " does not exist");
+			Object instance;
 			try {
-				instance = c.newInstance();
-				Method m = c.getMethod("getType");				
+				instance = targetSettingsClass.newInstance();
+				Method m = targetSettingsClass.getMethod("getType");
 				registerSetting ( (SettingsAbstractMaster) instance);
 				saveTile ((SettingsConstants.SettingsTypes) m.invoke(instance));
 				
 			}
 			catch (Exception ex)  {
-				log.error ("Failed to create configuration file '" + potentionalSettingsFile.getAbsolutePath()+"'", ex);
+				log.error ("Failed to create configuration file '" + potentialSettingsFile.getAbsolutePath()+"'", ex);
 			}			
 		}
 		return true;
@@ -172,7 +166,7 @@ public class SettingsHolder {
 	
 	/**
 	 * saveTile with type only
-	 * @param type
+	 * @param type the settings type (see constants)
 	 */
 	private void saveTile (SettingsConstants.SettingsTypes type) {
 		saveTile(settings.get(type));
@@ -181,7 +175,7 @@ public class SettingsHolder {
 	/**
 	 * saveTile gets the instance to save in the appropriate .cfg file 
 	 * in 'configSearchLocation'
-	 * @param instance
+	 * @param instance The object to serialize
 	 */
 	private void saveTile (SettingsAbstractMaster instance) {
 		if (instance != null) {
@@ -192,8 +186,8 @@ public class SettingsHolder {
 													);			
 			
 			log.debug("Saving tile '"+instance.getType()+"' to '"+potentionalSettingsFile.getAbsolutePath()+"'");
-			FileOutputStream fos 	= null;
-			ObjectOutputStream out 	= null;
+			FileOutputStream fos;
+			ObjectOutputStream out;
 			
 			/* clear unwanted serialization data */
 			instance.beforeSerializing();
@@ -214,7 +208,7 @@ public class SettingsHolder {
 	
 	/**
 	 * get a SettingsAbstractMaster Tile
-	 * @param type
+	 * @param type the settings type (see constants)
 	 * @return a SettingsAbstractMaster Tile
 	 */
 	public SettingsAbstractMaster get (SettingsConstants.SettingsTypes type) {
@@ -243,7 +237,7 @@ public class SettingsHolder {
 
 	/**
 	 * return the registered settings groups
-	 * @return
+	 * @return object list of the currently registered settings objects
 	 */
 	public Collection<SettingsAbstractMaster> getRegisteredSettingGroups () {
 		return this.settings.values ();
@@ -251,7 +245,7 @@ public class SettingsHolder {
 
 	/**
 	 * returns an Iterator for all registered expanders
-	 * @return an Iterator<Entry<SettingsConstants.SettingsExpander, ArrayList<SettingsAbstractMaster>>> with every registered expander
+	 * @return an Iterator with every registered expander
 	 */
 	public Iterator<Entry<SettingsConstants.SettingsExpander, ArrayList<SettingsAbstractMaster>>> getRegisteredExpanders () {
 		return settingsToExpander.entrySet().iterator();
@@ -262,7 +256,6 @@ public class SettingsHolder {
 	 * @param type the type of the SettingsElement to be retrieved
 	 * @return an Iterator <SettingsElement> with all registered settings elements of a type
 	 */
-	
 	public Iterator <SettingsElement> getSettingsElements (SettingsConstants.SettingsTypes type)
 	{
 		if (settings.containsKey(type))
@@ -275,7 +268,6 @@ public class SettingsHolder {
 	 * save Settings
 	 * @return if the serialization has been successful
 	 */
-	
 	public boolean saveSettings () {
 		log.debug("Saving Settings ... ");
 		Iterator <SettingsConstants.SettingsTypes> i = getRegisteredTypes();

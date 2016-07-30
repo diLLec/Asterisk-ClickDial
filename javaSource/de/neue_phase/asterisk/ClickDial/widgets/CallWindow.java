@@ -4,6 +4,7 @@ import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.Locale;
 
+import de.neue_phase.asterisk.ClickDial.controller.BaseController;
 import org.apache.log4j.Logger;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.Color;
@@ -83,8 +84,7 @@ public class CallWindow {
   	private native static int getTransparency(int handle);  	
   	
   	private int				transparency	= 0;
-  	private Display			display			= Display.getCurrent();
-  	private Shell			shell			= new Shell(Bootstrap.primaryShell,  SWT.ON_TOP);
+  	private Shell			shell			= null;
   	private	SettingsHolder  settings		= SettingsHolder.getInstance();
   	
   	/* dependency information */
@@ -122,7 +122,8 @@ public class CallWindow {
   						String from, String to, 
   						CallState state,
   						String unique) {
-  		
+
+  		this.shell 	= new Shell(BaseController.getInstance ().getPrimaryShell (),  SWT.ON_TOP);
   		this.placer = placer;
   		this.from   = from;
   		this.to		= to;
@@ -183,7 +184,7 @@ public class CallWindow {
 				10);
 		*/
   		// -- dispatch all events
-  		while (display.readAndDispatch()) 
+  		while (BaseController.getInstance ().getMainDisplay ().readAndDispatch())
   					System.out.println("CallWindow: dispatching");
 	}
 
@@ -330,15 +331,15 @@ public class CallWindow {
 		Color newColor = null;
 		
 		switch (state) {
-		case CONNECTED:		 newColor = new Color(display,0,255,0); // green
+		case CONNECTED:		 newColor = new Color(BaseController.getInstance ().getMainDisplay (),0,255,0); // green
 								break;
-		case DISCONNECTED: 	 newColor = new Color(display,245,132,10); // orange 
+		case DISCONNECTED: 	 newColor = new Color(BaseController.getInstance ().getMainDisplay (),245,132,10); // orange
 								break;
-		case RINGING: 		 newColor = new Color(display,245,237,10); // yellow
+		case RINGING: 		 newColor = new Color(BaseController.getInstance ().getMainDisplay (),245,237,10); // yellow
 								break;
-		case NEW: 			 newColor = new Color(display,10,245,237); // light-blue
+		case NEW: 			 newColor = new Color(BaseController.getInstance ().getMainDisplay (),10,245,237); // light-blue
 								break;
-		case FAILED:		newColor = new Color(display,255,0,0); // red 
+		case FAILED:		newColor = new Color(BaseController.getInstance ().getMainDisplay (),255,0,0); // red
 							break;
 		}
 

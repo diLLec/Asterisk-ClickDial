@@ -8,6 +8,7 @@ import de.neue_phase.asterisk.ClickDial.constants.ServiceConstants;
 import de.neue_phase.asterisk.ClickDial.controller.*;
 import de.neue_phase.asterisk.ClickDial.eventbus.EventBusFactory;
 import de.neue_phase.asterisk.ClickDial.jobs.AutoConfigJob;
+import de.neue_phase.asterisk.ClickDial.jobs.IJob;
 import de.neue_phase.asterisk.ClickDial.jobs.JobFactory;
 import de.neue_phase.asterisk.ClickDial.jobs.exceptions.JobCreationException;
 import de.neue_phase.asterisk.ClickDial.serviceInterfaces.AsteriskManagerWebservice;
@@ -32,42 +33,44 @@ import java.util.logging.Level;
  * start controllers.
  *
  */
-public class Bootstrap  implements Runnable {
+public class Bootstrap {
 
 	/**
 	 * @param args
 	 */
 	
 	/* the logging facility */
-	private static final Logger    log 				= Logger.getLogger("Bootstrap");
-
-	/* the main SWT display */
-	private static final Display	display 		= new Display ();
-
-	/* the non-open primary shell, which will prevent the taskbar to show our windows */
-	public static final Shell		primaryShell	= new Shell();
+	private static final Logger    log 		= Logger.getLogger(Bootstrap.class);
 
     /* the global settings reader */
-    private static final SettingsHolder  settings 	= SettingsHolder.getInstance();
+    private static SettingsHolder  settings;
 
 	/* the base controller */
-	private static final BaseController bC			= BaseController.getInstance();
+	private static BaseController bC;
 
 	/* the splash screen */
-	private static SplashScreen splash 				= null;
+	private static SplashScreen splash;
 
-	public static final Rectangle priMonSize 		= display.getPrimaryMonitor().getBounds();
+	public static Rectangle priMonSize;
 	
 	public static void main(String[] args) {
 		log.info(InterfaceConstants.myName + " starting up. SWT Version = " + SWT.getVersion() + " OS = " + System.getProperty("os.name"));
-        java.util.logging.Logger.getGlobal ().setLevel (Level.ALL);
 
-		splash = new SplashScreen (4);
-		splash.open();
-		
 		/* start the controllers */
-		log.debug("Scheduling the Boostrap ...");
-		display.asyncExec(new Bootstrap());
+		log.debug("Init Display and other SWT stuff");
+        Display display 		= new Display ();
+        Shell primaryShell	    = new Shell();
+        priMonSize              = display.getPrimaryMonitor().getBounds();
+        settings 	            = SettingsHolder.getInstance();
+        bC		                = new BaseController (display);
+
+
+        splash = new SplashScreen (8);
+        splash.open();
+
+        log.debug("Starting the Boostrap ...");
+        new Bootstrap().run (display);
+
 		log.debug("Splash screen iteration started");
 		splash.goIteration();
 		
@@ -78,89 +81,110 @@ public class Bootstrap  implements Runnable {
 		bC.iterate();
 	}
 
-	public void run() {
+	/**
+	 *
+	 * @param display The root display
+     */
+	private void run(Display display) {
 
-        /*
-         instanciate the display event bus
-         */
-        EventBusFactory.instanciateDisplayEventBus(display);
+		EventBusFactory.instanciateDisplayEventBus(display);
+		log.debug("Starting the instantiation thread.");
+
+		new Thread (() -> {
+            /*
+                 instantiate the display event bus
+             */
+
+            /*
+             *  first step:   parse the configuration
+             */
+            splash.setDescribingText("Loading settings ...");
+            settings.newTile(SettingsAsterisk.class);
+            settings.newTile(SettingsGlobal.class);
+            settings.newTile(SettingsDatasource.class);
+            bC.bringUp (new SettingsController (settings, bC), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
+
+            log.debug("starting TrayIconController");
+            bC.bringUp(new TrayIconController(settings, bC), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
+            log.debug("... done starting TrayIconController");
+
+            /*
+             * register eventbus
+             */
+            EventBusFactory.getDisplayThreadEventBus ().register (bC);
 
 
-		/*
-		 *  first step:   parse the configuration
-		 */
-		splash.setDescribingText("Loading settings ...");
-		settings.newTile(SettingsAsterisk.class);
-		settings.newTile(SettingsGlobal.class);
-		settings.newTile(SettingsDatasource.class);
-        bC.bringUp (new SettingsController (settings, bC), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
+            splash.setDescribingText("Connecting Service Interfaces ...");
+            bC.initKeystore ();
+
+            AsteriskManagerWebservice asWebservice = new AsteriskManagerWebservice (ServiceConstants.WebserviceURL);
+            bC.bringUp (asWebservice, BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
+            EventBusFactory.getSyncEventBus ().register (asWebservice);
+            EventBusFactory.getThreadPerTaskEventBus ().register (asWebservice);
+
+            splash.setDescribingText("Starting AutoConfiguration via Asterisk Manager Webservice ...");
+            try {
+                IJob job = JobFactory.createJob (ControllerConstants.JobTypes.AutoConfig);
+                bC.bringUp (job, BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
+            } catch (JobCreationException e) {
+                log.error ("Unable to spawn AutoConfig job", e);
+            }
 
 
-        log.debug("starting TrayIconController");
-        bC.bringUp(new TrayIconController(settings, bC), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
-        log.debug("... done starting TrayIconController");
+            splash.setDescribingText("Starting WorkstateGetterJob ...");
+            try {
+                IJob job = JobFactory.createJob (ControllerConstants.JobTypes.WorkstateGetter);
+                EventBusFactory.getThreadPerTaskEventBus ().register (job);
+                bC.bringUp (job, BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
+            } catch (JobCreationException e) {
+                log.error ("Unable to spawn WorkstateGetterJob", e);
+            }
 
-		/**
-		 * register eventbus
-		 */
-		EventBusFactory.getDisplayThreadEventBus ().register (bC);
+            splash.setDescribingText("Starting ScreenLockWatcherJob ...");
+            try {
+                IJob job = JobFactory.createJob (ControllerConstants.JobTypes.ScreenLockWatcherJob);
+                bC.bringUp (job, BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
+            } catch (JobCreationException e) {
+                log.error ("Unable to spawn ScreenLockWatcherJob", e);
+            }
 
-		splash.setDescribingText("Connecting Service Interfaces ...");
-		bC.initKeystore ();
-		AsteriskManagerWebservice asWebservice = new AsteriskManagerWebservice (ServiceConstants.WebserviceURL);
-		bC.bringUp (asWebservice, BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
-        EventBusFactory.getSyncEventBus ().register (asWebservice);
-        EventBusFactory.getThradPerTaskEventBus ().register (asWebservice);
+            bC.scheduleJobWatchdog ();
 
-		splash.setDescribingText("Starting AutoConfiguration via Asterisk Manager Webservice ...");
-        try {
-            bC.bringUp (JobFactory.createJob (ControllerConstants.JobTypes.AutoConfig), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
-        } catch (JobCreationException e) {
-            log.error ("Unable to spawn AutoConfig job", e);
-        }
+            splash.setDescribingText("linking with asterisk ...");
+            log.debug("starting AsteriskConnectionController ...");
+            bC.bringUp(new AsteriskManagerInterface (), BaseController.BRINGUP_CONTINUE_IF_FAIL);
 
-        splash.setDescribingText("Starting WorkstateGetterJob ...");
-        try {
-            bC.bringUp (JobFactory.createJob (ControllerConstants.JobTypes.WorkstateGetter), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
-        } catch (JobCreationException e) {
-            log.error ("Unable to spawn WorkstateGetterJob", e);
-        }
-		bC.scheduleJobWatchdog ();
+            log.debug("... done starting AsteriskConnectionController");
+            /*
+             * second step:   startup the controller's
+             */
 
-		splash.setDescribingText("linking with asterisk ...");
-		log.debug("starting AsteriskConnectionController ...");
-		bC.bringUp(new AsteriskManagerInterface (), BaseController.BRINGUP_CONTINUE_IF_FAIL);
+            /* the DataSources Controller */
+            splash.setDescribingText ("Connecting datasources ...");
+            log.debug("starting DataSourceController ...");
+            bC.bringUp(new DataSourceController(settings, bC), BaseController.BRINGUP_CONTINUE_IF_FAIL);
+            log.debug("... done starting DataSourceController");
+            /* the AsteriskConnection Controller */
 
-		log.debug("... done starting AsteriskConnectionController");
-		/*
-		 * second step:   startup the controller's 
-		 */
+            /* !!!!
+             * it is imperative, that this Controller is started before AsteriskConnectionController is
+             * started - AsteriskConnectionController uses this Controller to pop-up the CallWindows
+             * !!!!
+             */
+            log.debug("starting CallWindowController");
+            bC.bringUp(new CallWindowController(settings, bC), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
+            log.debug("... done starting CallWindowController");
 
-		/* the DataSources Controller */
-		splash.setDescribingText ("Connecting datasources ...");
-		log.debug("starting DataSourceController ...");
-		bC.bringUp(new DataSourceController(settings, bC), BaseController.BRINGUP_CONTINUE_IF_FAIL);
-		log.debug("... done starting DataSourceController");
-		/* the AsteriskConnection Controller */
-		
-		/* !!!! 
-		 * it is imperative, that this Controller is started before AsteriskConnectionController is
-		 * started - AsteriskConnectionController uses this Controller to pop-up the CallWindows
-		 * !!!!
-		 */
-		log.debug("starting CallWindowController");
-		bC.bringUp(new CallWindowController(settings, bC), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
-		log.debug("... done starting CallWindowController");
+            log.debug("starting HotkeyController");
+            bC.bringUp(new HotkeyController (settings, bC), BaseController.BRINGUP_CONTINUE_IF_FAIL);
+            log.debug("... done starting HotkeyController");
 
-        log.debug("starting HotkeyController");
-        bC.bringUp(new HotkeyController (settings, bC), BaseController.BRINGUP_CONTINUE_IF_FAIL);
-        log.debug("... done starting HotkeyController");
+            /* raising counter to 4  - splash screen dies now */
+            splash.setDescribingText("Done! Now we bring up the dialwindow ...");
 
-		/* raising counter to 4  - splash screen dies now */
-		splash.setDescribingText("Done! Now we bring up the dialwindow ...");
-		
-		log.debug("starting DialWindowController");
-		bC.bringUp(new DialWindowController(settings, bC), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
-		log.debug("... done starting DialWindowController");
-	}	
+            log.debug("starting DialWindowController");
+            bC.bringUp(new DialWindowController(settings, bC), BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
+            log.debug("... done starting DialWindowController");
+        }).start ();
+	}
 }

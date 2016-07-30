@@ -27,6 +27,9 @@ public class JobFactory {
         else if (type.equals (ControllerConstants.JobTypes.WorkstateGetter))
             return createWorkstateGetter ();
 
+        else if (type.equals (ControllerConstants.JobTypes.ScreenLockWatcherJob))
+            return createScreenLockWatcherJob ();
+
         else
             throw new JobCreationException ("Sorry - factory is not able to create this type of Job '"+type.toString ()+"'");
     }
@@ -62,6 +65,15 @@ public class JobFactory {
             log.error ("Can't get AsteriskManagerWebservice to construct AutoConfig job.", e);
             throw new JobCreationException ("Error while creating AutoConfigJob.");
         }
+    }
+
+    /**
+     * Creates a new ScreenLockWatcherJob
+     * @return object
+     * @throws JobCreationException
+     */
+    private static ScreenLockWatcherJob createScreenLockWatcherJob () throws JobCreationException {
+        return new ScreenLockWatcherJob();
     }
 
 }

@@ -143,16 +143,16 @@ public class TrayIconController extends ControllerBaseClass implements
             }
 
             if (menuItem.getText ().equals (WorkstateTypes.Feierabend.toString ())) {
-                EventBusFactory.getThradPerTaskEventBus ().post (new SetWorkstateEvent (WorkstateTypes.Feierabend));
+                EventBusFactory.getThreadPerTaskEventBus ().post (new SetWorkstateEvent (WorkstateTypes.Feierabend));
             }
             else if (menuItem.getText ().equals (WorkstateTypes.Arbeit.toString ())) {
-                EventBusFactory.getThradPerTaskEventBus ().post (new SetWorkstateEvent (WorkstateTypes.Arbeit));
+                EventBusFactory.getThreadPerTaskEventBus ().post (new SetWorkstateEvent (WorkstateTypes.Arbeit));
             }
             else if (menuItem.getText ().equals (WorkstateTypes.Pause.toString ())) {
-                EventBusFactory.getThradPerTaskEventBus ().post (new SetWorkstateEvent (WorkstateTypes.Pause));
+                EventBusFactory.getThreadPerTaskEventBus ().post (new SetWorkstateEvent (WorkstateTypes.Pause));
             }
             else if (menuItem.getText ().equals (WorkstateTypes.AusserHaus.toString ())) {
-                EventBusFactory.getThradPerTaskEventBus ().post (new SetWorkstateEvent (WorkstateTypes.AusserHaus));
+                EventBusFactory.getThreadPerTaskEventBus ().post (new SetWorkstateEvent (WorkstateTypes.AusserHaus));
             }
 		}
 	}

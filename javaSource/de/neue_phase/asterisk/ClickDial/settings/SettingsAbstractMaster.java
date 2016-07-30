@@ -30,20 +30,18 @@ public abstract class SettingsAbstractMaster implements Serializable
 	protected SettingsConstants.SettingsTypes    type 		= SettingsConstants.SettingsTypes.none;
 	protected SettingsConstants.SettingsExpander expander 	= SettingsConstants.SettingsExpander.Base;
 
-	public 	  final int 	version				 = 8;
+	public 	  final int 	version				 = 9;
 
 	public String						  	name = "Master";
 
 	/* the hash where settings are stored */
 	protected final LinkedHashMap<String, SettingsElement> settings = new LinkedHashMap<String, SettingsElement>();
-
-	/* the logging facility
-	* - in this case the Logger is static, since it should not be serialized with the settings object. */
-	protected static Logger log 				            = Logger.getLogger ("SettingsAbstractMaster");
+	protected static Logger log 				           			= null;
 	
 	private static final long serialVersionUID = -2745954613452507927L;
 
 	public SettingsAbstractMaster() {
+		log = Logger.getLogger (this.getClass ());
 		initializeSettings();
 	}
 	
@@ -51,8 +49,13 @@ public abstract class SettingsAbstractMaster implements Serializable
 	protected void initializeSettings () {
 		
 	}
-	
-	public String 			getValue (String name) 
+
+	/**
+	 *
+	 * @param name
+	 * @return
+     */
+	public String getValue (String name)
 	{
 		if ( ! settings.containsKey(name) || settings.get(name) == null )
 		{
@@ -62,6 +65,11 @@ public abstract class SettingsAbstractMaster implements Serializable
 		return settings.get(name).getValue();
 	}
 
+	/**
+	 *
+	 * @param name
+	 * @return
+     */
 	public Integer 			getValueInteger (String name) 
 	{
 		if ( ! settings.containsKey(name) || settings.get(name) == null )
@@ -71,7 +79,12 @@ public abstract class SettingsAbstractMaster implements Serializable
 		}
 		return new Integer(settings.get(name).getValue());
 	}
-	
+
+	/**
+	 *
+	 * @param name
+	 * @return
+     */
 	public SettingsElement 	get	(String name) 
 	{
 		if ( ! settings.containsKey(name))

@@ -1,5 +1,6 @@
 package de.neue_phase.asterisk.ClickDial.controller;
 
+import java.sql.Time;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map.Entry;
@@ -29,6 +30,7 @@ import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants.JobTypes;
 import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants.ServiceInterfaceProblems;
 import de.neue_phase.asterisk.ClickDial.constants.SettingsConstants.SettingsTypes;
 import de.neue_phase.asterisk.ClickDial.controller.exception.InitException;
+import org.eclipse.swt.widgets.Shell;
 
 /**
  * The BaseController will startup every Controller and bailsOut if
@@ -57,27 +59,45 @@ public class BaseController {
 	private boolean jobWatchdogScheduled			= false;
 	private SettingsWebserviceKeystore keystore		= null;
 	private IServiceInterface lastExtract			= null;
+	private Display mainDisplay						= null;
+	private Shell primaryShell						= null;
 
-
-    private static BaseController instance = null;
+    private static BaseController instance 			= null;
 
     /**
      * Singleton getInstance
-     * @return
+     * @return BaseController
      */
     public static BaseController getInstance () {
-        if (instance == null)
-            instance = new BaseController ();
+		if (BaseController.instance == null)
+			throw new IllegalStateException("Not instantiated!");
 
-        return instance;
+        return BaseController.instance;
     }
 
-    /**
-     * constructor
+	/**
+	 *
+	 * @param mainDisplay the main display for this application
      */
-	private BaseController () {
-        if (instance != null)
-            throw new IllegalStateException("Already instantiated");
+	public BaseController (Display mainDisplay) {
+		if (BaseController.instance != null)
+			throw new IllegalStateException("Already instantiated");
+
+		BaseController.instance 		= this;
+		this.mainDisplay 				= mainDisplay;
+		this.primaryShell	 			= new Shell(mainDisplay);
+	}
+
+	public Shell getPrimaryShell () {
+		return primaryShell;
+	}
+
+	/**
+	 *
+	 * @return display
+     */
+	public Display getMainDisplay () {
+		return mainDisplay;
 	}
 
 	@Subscribe
@@ -170,7 +190,7 @@ public class BaseController {
     }
 
     private Boolean onProblemEvent (ServiceInterfaceTypes type, ServiceInterfaceProblems problem, Integer tryCount) {
-		log.debug("handleServiceInterfaceContinueOrNot from " + type.toString() + " with problem " + problem.toString ());
+		log.debug("onProblemEvent from " + type.toString() + " with problem " + problem.toString ());
 		if (type == ServiceInterfaceTypes.Webservice) {
 			switch (problem) {
 				case ConnectionProblem:
@@ -267,7 +287,7 @@ public class BaseController {
 		}
 		catch (InitException e)
 		{
-			log.error("Failed to bring up "+service.getName());
+			log.error(String.format ("Failed to bring up '%s'", service.getName()), e);
 			if (needed) {
 				log.error("closing down, since this Service is needed!");
 				bailOut();
@@ -310,21 +330,21 @@ public class BaseController {
 
 	}
 
-	public void raiseJobCrashCount (JobTypes type) {
+	private void raiseJobCrashCount (JobTypes type) {
 		if (jobCrashHash.containsKey (type))
 			jobCrashHash.put(type, jobCrashHash.get(type) + 1);
 		else
 			jobCrashHash.put(type, 1);
 	}
 
-	public Integer getJobCrashCount (JobTypes type) {
+	private Integer getJobCrashCount (JobTypes type) {
 		if (jobCrashHash.containsKey (type))
 			return jobCrashHash.get(type);
 		else
 			return 0;
 	}
 
-	public void checkAndRestartJobs () {
+	private void checkAndRestartJobs () {
 		log.trace ("Job Watchdog Running");
 		for(Entry<JobTypes, IJob> entry : jobsHash.entrySet()) {
 			JobTypes type = entry.getKey ();
@@ -351,7 +371,6 @@ public class BaseController {
 		}
 
 		this.jobWatchdogScheduled = false;
-		scheduleJobWatchdog();
 	}
 
 	public void scheduleJobWatchdog () {
@@ -366,24 +385,37 @@ public class BaseController {
             return;
         }
 
-		Display.getCurrent ().timerExec (ControllerConstants.JobWatchdogInterval, new Runnable () {
-			@Override
-			public void run () {
-				checkAndRestartJobs ();
+        new Thread(() -> {
+        	checkAndRestartJobs ();
+			try {
+				TimeUnit.MILLISECONDS.sleep(1000);
+			} catch (InterruptedException e) {
+				log.debug (e);
 			}
+
 		});
 
 		this.jobWatchdogScheduled = true;
 	}
 
+	/**
+	 * iterate loop for SWT UI thread
+     */
 	public void iterate () {
-        Display displayRef = Display.getCurrent ();
+        Display displayRef = Display.getDefault ();
 
 		while (!displayRef.isDisposed ()) {
 			if (!displayRef.readAndDispatch ()) {
 				displayRef.sleep ();
 			}
 		}
+	}
+
+	/**
+	 * wake a sleeping ui thread
+     */
+	public void wakeUiThread () {
+		Display.getDefault ().wake ();
 	}
 
     /**
@@ -455,7 +487,8 @@ public class BaseController {
 		catch (Exception e) {
 			log.error("Warning: we had Exceptions while closing the controllers! But now watch the StackTrace ...", e);
 		}
-		
+
+		Display.getDefault ().dispose ();
 		System.runFinalization ();
 		System.gc();
 		System.exit (0);

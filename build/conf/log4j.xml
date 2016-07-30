@@ -20,10 +20,25 @@
     </layout>
   </appender>
 
+  <logger name="org.apache.http.wire" additivity="false">
+    <level value="TRACE" />
+    <appender-ref ref="console_appender" />
+  </logger>
+
+  <logger name="org.apache.http.headers" additivity="false">
+    <level value="TRACE" />
+    <appender-ref ref="console_appender" />
+  </logger>
+
+  <logger name="de.neue_phase.asterisk" additivity="false">
+    <level value="TRACE" />
+    <appender-ref ref="console_appender" />
+  </logger>
+
   <root>
     <priority value="TRACE" />
     <!-- <appender-ref ref="file_appender" /> -->
-     <appender-ref ref="console_appender" /> 
-  </root>
+    <!-- <appender-ref ref="console_appender" />  -->
+ </root>
 
 </log4j:configuration>

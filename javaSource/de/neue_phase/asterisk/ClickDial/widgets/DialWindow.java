@@ -3,6 +3,7 @@ package de.neue_phase.asterisk.ClickDial.widgets;
 import java.io.File;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import de.neue_phase.asterisk.ClickDial.controller.BaseController;
 import org.apache.log4j.Logger;
 import org.eclipse.jface.bindings.keys.KeyStroke;
 import org.eclipse.jface.bindings.keys.ParseException;
@@ -41,17 +42,16 @@ public class DialWindow {
 	/* the logging facility */
 	private final Logger    log 				= Logger.getLogger(this.getClass());
 	
-	public DialWindow(Display displayRef, DialWindowController ctrl) {
+	public DialWindow(DialWindowController ctrl) {
 		
 		this.ctrl 		= ctrl;
-		this.displayRef = displayRef;
+		this.displayRef = Display.getDefault ();
 
-		shell = new Shell (Bootstrap.primaryShell, SWT.NO_TRIM);
 
+		DialWindow.this.shell = new Shell (BaseController.getInstance ().getPrimaryShell (), SWT.NO_TRIM);
 		cutRegionFromImage ();
 		addTextArea ();
-
-        shell.addTraverseListener (ctrl);
+		DialWindow.this.shell.addTraverseListener (ctrl);
 	}
 	
 	/**
@@ -262,7 +262,7 @@ public class DialWindow {
 	 * close down routine
 	 */
 	public void dispose () {
-		if (! rightClickMenu.isDisposed ())
+		if (rightClickMenu != null && ! rightClickMenu.isDisposed ())
             rightClickMenu.dispose();
 
         if (webserviceConnectionState != null && ! webserviceConnectionState.isDisposed ())
@@ -288,7 +288,6 @@ public class DialWindow {
             shell.setVisible (true);
             shell.setFocus ();
         }
-
 	}
 
     /**

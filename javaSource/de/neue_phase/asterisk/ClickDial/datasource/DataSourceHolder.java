@@ -36,7 +36,7 @@ public class DataSourceHolder implements DataSourceResultSetListener {
 	 *
 	 */
 	public DataSourceHolder() {
-        EventBusFactory.getThradPerTaskEventBus ().register (this);
+        EventBusFactory.getThreadPerTaskEventBus ().register (this);
 	}
 
     /**

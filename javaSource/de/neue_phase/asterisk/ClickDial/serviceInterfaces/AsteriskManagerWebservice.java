@@ -1,31 +1,37 @@
 package de.neue_phase.asterisk.ClickDial.serviceInterfaces;
 
 import com.google.common.eventbus.AsyncEventBus;
+import com.google.common.eventbus.EventBus;
 import com.google.common.eventbus.Subscribe;
+import com.google.common.util.concurrent.Service;
 import com.mashape.unirest.http.HttpResponse;
 import com.mashape.unirest.http.JsonNode;
 import com.mashape.unirest.http.Unirest;
-import com.mashape.unirest.http.exceptions.UnirestException;
+import com.mashape.unirest.request.GetRequest;
 import com.mashape.unirest.request.HttpRequest;
+import com.mashape.unirest.request.HttpRequestWithBody;
 import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants;
 import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants.ServiceInterfaceProblems;
 import de.neue_phase.asterisk.ClickDial.constants.InterfaceConstants;
+import de.neue_phase.asterisk.ClickDial.constants.ServiceConstants;
+import de.neue_phase.asterisk.ClickDial.controller.BaseController;
 import de.neue_phase.asterisk.ClickDial.controller.exception.InitException;
-import de.neue_phase.asterisk.ClickDial.controller.util.AsteriskCallerId;
 import de.neue_phase.asterisk.ClickDial.datasource.Contact;
 import de.neue_phase.asterisk.ClickDial.eventbus.EventBusFactory;
 import de.neue_phase.asterisk.ClickDial.eventbus.events.*;
 import de.neue_phase.asterisk.ClickDial.settings.extractModels.ExtractWebserviceAuthData;
 import org.apache.commons.validator.routines.UrlValidator;
 import org.apache.log4j.Logger;
+import org.eclipse.swt.widgets.Display;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -36,21 +42,24 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
         NOT_CONNECTED, // no connection possible
         CONNECTED,     // connected but not authenticated
         AUTHENTICATED, // connected _and_ authenticated
-
     }
 
-    protected Thread interfaceCheckThread       = null;
-    protected AtomicBoolean problemTriggered	= new AtomicBoolean (false);
-    protected AtomicBoolean shutdownInterface	= new AtomicBoolean (false);
+    private enum RequestMethod {
+        GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS, TRACE;
+    }
+
+    private Thread interfaceCheckThread     = null;
+    private AtomicBoolean problemTriggered	= new AtomicBoolean (false);
+    private AtomicBoolean shutdownInterface	= new AtomicBoolean (false);
     private AtomicReference<ConnectionState> conState = new AtomicReference<ConnectionState> ();
+    private CountDownLatch authenticationDone      = new CountDownLatch(1);
 
     private String serviceURL;
+    private String sessionId;
 
     private Integer authenticationTry   = 0;
     private Integer problemTry          = 0;
     private ControllerConstants.ServiceInterfaceTypes type = ControllerConstants.ServiceInterfaceTypes.Webservice;
-    private AsyncEventBus displayEventBus				   = EventBusFactory.getDisplayThreadEventBus ();
-
     protected final Logger log = Logger.getLogger(this.getClass());
 
     /**
@@ -59,6 +68,7 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
      */
     public AsteriskManagerWebservice (String serviceURL) {
         this.serviceURL = serviceURL;
+        Unirest.setTimeouts(ServiceConstants.WebserviceConnectTimeout, ServiceConstants.WebserviceSocketTimeout);
     }
 
     /**
@@ -74,10 +84,15 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
      */
     @Override
     public void run () {
+
+        // this is done on startup
+        this.authenticate();
+        authenticationDone.countDown ();
+
         do {
             if (conState.get () == ConnectionState.CONNECTED) {
                 problemTriggered.set (true);
-                reAuthenticate (); // blocks
+                this.authenticate(); // blocks
             }
             else if (conState.get() == ConnectionState.NOT_CONNECTED) {
                 problemTriggered.set(true);
@@ -85,13 +100,13 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
             }
             try {
                 TimeUnit.SECONDS.sleep (2);
-            } catch (InterruptedException e) { log.debug ("Interrupted sleep.");}
+            } catch (InterruptedException e) { log.trace ("Interrupted sleep - wakeup from outside.");}
         } while (!shutdownInterface.get ());
     }
 
     /**
      * Start the ServiceInterface up
-     * @throws InitException
+     * @throws InitException Thrown if some information to actually create the connection is missing
      */
     @Override
     public void startUp () throws InitException {
@@ -99,53 +114,85 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
         if (!urlValidator.isValid(this.serviceURL))
             throw new InitException ("Invalid service URL specified.");
 
-        this.reAuthenticate ();
-        if (!this.isAuthenticated ())
-            throw new InitException ("AsteriskManagerWebservice could not authenticate with the given credentials.");
-
-        interfaceCheckThread = new Thread(this);
+        log.debug ("Starting interfaceCheckThread");
+        interfaceCheckThread = new Thread(this); // runs AsteriskManagerWebservice.run()
         interfaceCheckThread.start ();
+
+        // wait for authentication to happen
+
+        log.debug ("Waiting for authenticate to pass");
+        try {
+            authenticationDone.await ();
+        } catch (InterruptedException e) {
+            log.error ("Huh - Latch wait has been interrupted.", e);
+        }
+
+        // there is no feedback loop to this, if the user quits the application
+        // see BaseController.onProblemEvent() -> "quit"
     }
 
+    /**
+     * close the interface down
+     */
     @Override
     public void shutdown () {
-        // nothing to shutdown here
-        interfaceCheckThread.interrupt ();
         this.shutdownInterface.set (true);
-    }
+        try {
+            Unirest.shutdown();
+        }
+        catch (IOException ex) {
+            log.error (ex);
+        }
 
+        if (interfaceCheckThread != null)
+            interfaceCheckThread.interrupt ();
+    }
 
     /**
      * trigger event(s) that will announce that this component needs
      * new authentication data and try to contact webservice for authorization
      */
-    private void reAuthenticate () {
+    private void authenticate () {
         do {
             WebserviceInsufficientAuthDataEvent event = new WebserviceInsufficientAuthDataEvent (this.type,
                                                                                                  authenticationTry);
-            displayEventBus.post (event);
+            EventBusFactory.getDisplayThreadEventBus ().post (event);
             ExtractWebserviceAuthData authData = event.getReponse (3000);
 
             if (authData != null) {
-                this.authenticate (authData.getUsername (), authData.getPassword ());
+                this.authenticateAction (authData.getUsername (), authData.getPassword ());
                 if (conState.get () == ConnectionState.AUTHENTICATED) {
-                    displayEventBus.post (new ServiceAcknowledgeAuthDataEvent ());
+                    EventBusFactory.getDisplayThreadEventBus ().post (new ServiceAcknowledgeAuthDataEvent ());
                     this.authenticationTry = 0;
                 }
-
             }
             authenticationTry += 1;
         } while (!this.isAuthenticated () && authenticationTry <= 10);
+
+
+    }
+
+    /**
+     * Update the connection state and trigger the check thread. This decouples the webservice thread with the actual
+     * connection handling.
+     * @param changeTo target to change the state to
+     */
+    private void updateConnectionState (ConnectionState changeTo) {
+        if (this.conState.get () != changeTo) {
+            this.conState.set (changeTo);
+            interfaceCheckThread.interrupt (); // trigger interfaceCheckThread, so that it can check if we need to reauth or something
+        }
     }
 
     /**
      * trigger event (s) that will announce that this component has a problem
+     * This function blocks the executing thread
      * @param problemType the common type of the problem
      * @return problem solved (true), or not (false)
      */
     private Boolean triggerServiceInterfaceProblem (ControllerConstants.ServiceInterfaceProblems problemType) {
         WebserviceProblemEvent event = new WebserviceProblemEvent (this.type, problemType, problemTry++);
-        displayEventBus.post (event);
+        EventBusFactory.getSyncEventBus ().post (event); // blocks
         return event.getReponse (3000);
     }
 
@@ -156,27 +203,41 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
      * @param request The request to put
      * @return json response or null on error
      */
-    private HttpResponse<JsonNode> doJsonRequest (HttpRequest request) {
-        Boolean retry = false;
+    private HttpResponse<JsonNode> doJsonRequest (HttpRequest request, boolean checkProperAuthentication) {
 
-        do {
-            try {
-                HttpResponse<JsonNode> jsonResponse = request.asJson ();
+        if (checkProperAuthentication && ! this.isAuthenticated ()) {
+            this.log.error ("Can't send request "+request.getUrl ()+": Webservice is currently not authenticated!");
+            return null;
+        }
 
-                if (jsonResponse.getStatus () == 401) {
-                    conState.set (ConnectionState.CONNECTED);
-                    return null;
-                } else
-                    return jsonResponse;
+        try {
+            HttpResponse<JsonNode> jsonResponse;
+            jsonResponse = request.asJson ();
 
-            } catch (Exception ex) {
-                conState.set (ConnectionState.NOT_CONNECTED);
-                log.error ("Could not connect to Asterisk Manager Webservice on '" + this.serviceURL + "'");
-                retry = triggerServiceInterfaceProblem (ControllerConstants.ServiceInterfaceProblems.ConnectionProblem);
+            if (jsonResponse.getStatus () == 200) {
+                return jsonResponse;
             }
-        } while (retry);
+            else {
+                if (jsonResponse.getStatus () == 401)
+                    this.updateConnectionState (ConnectionState.CONNECTED);
+                log.error ("Failed request: '"+jsonResponse.getStatusText ()+"' ("+jsonResponse.getStatus ()+")");
+                return null;
+            }
+        } catch (Exception ex) {
+            this.updateConnectionState (ConnectionState.NOT_CONNECTED);
+            log.error ("Could not connect to Asterisk Manager Webservice on '" + this.serviceURL + "'", ex);
+        }
 
         return null;
+    }
+
+    /**
+     * variant for doJsonRequest, for those who don't want to specify the auth param
+     * @param request the request
+     * @return
+     */
+    private HttpResponse<JsonNode> doJsonRequest (HttpRequest request) {
+        return this.doJsonRequest (request, true);
     }
 
     /**
@@ -184,8 +245,8 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
      * @return Boolean
      */
     public ConnectionState testConnect () {
-        HttpResponse<JsonNode> jsonResponse = this.doJsonRequest (Unirest.get (this.serviceURL + "/ping")
-                                                                         .header ("accept", "application/json"));
+        HttpResponse<JsonNode> jsonResponse = this.doJsonRequest (getRequest ("/ping"), false);
+
         if (jsonResponse == null) {
             try {
                 JSONObject body = jsonResponse.getBody ().getObject ();
@@ -195,8 +256,12 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
                     log.info ("Test Connect successful: " + body.toString ());
                     conState.set (ConnectionState.AUTHENTICATED);
                 }
-            } catch (JSONException ex) {
+            }
+            catch (JSONException ex) {
                 log.error ("Bogus JSON Response on testConnect.", ex);
+            }
+            catch (NullPointerException ex) {
+                log.error ("Null pointer in json response", ex);
             }
         }
 
@@ -205,28 +270,78 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
     }
 
     /**
-     * Authenticate to the webservice and get the session cookie 'seid'
-     * @param wsUser
-     * @param wsPassword
-     * @return
+     *
+     * @param serviceSpecificURL last part of the URL, which defines the app we are calling
+     * @return get specific Request Object
      */
-    public ConnectionState authenticate (String wsUser, String wsPassword) {
+    private GetRequest getRequest (String serviceSpecificURL) {
+        return (GetRequest) this.getDefaultRequest (RequestMethod.GET, serviceSpecificURL);
+    }
+
+    /**
+     *
+     * @param serviceSpecificURL last part of the URL, which defines the app we are calling
+     * @return post specific Request Object
+     */
+    private HttpRequestWithBody postRequest (String serviceSpecificURL) {
+        return (HttpRequestWithBody) this.getDefaultRequest (RequestMethod.POST, serviceSpecificURL);
+    }
+
+    /**
+     *
+     * @param method Method to use
+     * @param serviceSpecificURL last part of the URL, which defines the app we are calling
+     * @return common Request Object
+     */
+    private HttpRequest getDefaultRequest (RequestMethod method, String serviceSpecificURL) {
+
+        String url = this.serviceURL + serviceSpecificURL;
+        HttpRequest request;
+        switch (method) {
+            case POST:  request =  Unirest.post (url);
+                break;
+            case GET:   // fall
+            default:    request =  Unirest.get (url);
+        }
+
+        request.header ("accept", "application/json");
+        request.header ("Content-Type", "application/json; charset=UTF-8");
+
+        if (this.isAuthenticated())
+            request.queryString("seid", this.sessionId);
+
+        return request;
+    }
+
+    /**
+     * Authenticate to the webservice and get the session id out of the json body
+     * @param wsUser Username for auth
+     * @param wsPassword Password for auth
+     * @return Connection state
+     */
+    private ConnectionState authenticateAction (String wsUser, String wsPassword) {
         JSONObject authenticationData = new JSONObject ();
         authenticationData.put ("username", wsUser);
         authenticationData.put ("password", wsPassword);
 
-        HttpResponse<JsonNode> jsonResponse = this.doJsonRequest (Unirest.post (this.serviceURL + "/authenticate")
-                                                                         .header ("accept", "application/json")
-                                                                         .header ("Content-Type", "application/json; charset=UTF-8")
-                                                                         .body (new JsonNode (authenticationData.toString ()))
-                                                                         .getHttpRequest ());
+
+        HttpResponse<JsonNode> jsonResponse = this.doJsonRequest (this.postRequest ("/authenticate")
+                                                                      .body (new JsonNode (authenticationData.toString ()))
+                                                                      .getHttpRequest (),
+                                                                  false);
         if (jsonResponse != null) {
             try {
                 JSONObject body = jsonResponse.getBody ().getObject ();
-                String status = (String) body.get ("authenticationStatus");
-                if (status.equals ("OK")) {
-                    log.info ("Authentication successful: " + body.toString ());
-                    return conState.getAndSet (ConnectionState.AUTHENTICATED);
+                if (! body.has ("authenticationStatus") || !body.has("sessionId")) {
+                    log.error ("Bogus JSON Response on authenticate.");
+                }
+                else {
+                    String status = (String) body.get ("authenticationStatus");
+                    if (status.equals ("OK")) {
+                        this.sessionId = (String) body.get ("sessionId");
+                        log.info ("Authentication successful - Session Id:  " + this.sessionId);
+                        return conState.getAndSet (ConnectionState.AUTHENTICATED);
+                    }
                 }
             } catch (JSONException ex) {
                 log.error ("Bogus JSON Response on authenticate.", ex);
@@ -240,7 +355,9 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
      * Does this Webservice Object has an authenticated HTTP REST session?
      * @return TRUE = authenticated session | FALSE = not authenticated
      */
-    public Boolean isAuthenticated () { return (this.conState.get() == ConnectionState.AUTHENTICATED); }
+    private Boolean isAuthenticated () {
+        return (this.conState.get() == ConnectionState.AUTHENTICATED);
+    }
 
 
     /**
@@ -249,9 +366,7 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
      */
     public Map<String, String> getAutoConfigurationData () {
 
-        HttpResponse<JsonNode> jsonResponse = doJsonRequest (Unirest.get (this.serviceURL + "/autoConfig")
-                                                                     .header ("accept", "application/json")
-                                                                     .header ("Content-Type", "application/json; charset=UTF-8"));
+        HttpResponse<JsonNode> jsonResponse = doJsonRequest (this.getRequest ("/autoConfig"));
         if (jsonResponse != null) {
             try {
                 JSONObject body = jsonResponse.getBody ().getObject ();
@@ -295,18 +410,16 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
      * Query Phonebook
      * @return a list of Contacts
      */
-    public ArrayList<Contact> queryPhonebook (String queryString) {
+    private ArrayList<Contact> queryPhonebook (String queryString) {
         ArrayList<Contact> returnList = new ArrayList<Contact> ();
 
         JSONObject queryData = new JSONObject ();
         queryData.put ("query_string", queryString);
         queryData.put ("query_pattern_type", "nameContains");
 
-        HttpResponse<JsonNode> jsonResponse = this.doJsonRequest (Unirest.post (this.serviceURL + "/phonebookQuery")
-                                                                          .header ("accept", "application/json")
-                                                                          .header ("Content-Type", "application/json; charset=UTF-8")
-                                                                          .body (new JsonNode (queryData.toString ()))
-                                                                          .getHttpRequest ());
+        HttpResponse<JsonNode> jsonResponse = this.doJsonRequest (this.postRequest ("/phonebookQuery")
+                                                                      .body (new JsonNode (queryData.toString ()))
+                                                                      .getHttpRequest ());
 
         if (jsonResponse != null) {
             try {
@@ -327,6 +440,7 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
                                 for (int j = 0; j < business.length (); j++)
                                     c.addPhoneNumber (business.getString (j), Contact.PhoneType.businessPhone);
                             } catch (JSONException ex) {
+                                log.error ("Bogus JSON Response on AutoConfig Query", ex);
                             }
 
                             try {
@@ -334,6 +448,7 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
                                 for (int j = 0; j < mobile.length (); j++)
                                     c.addPhoneNumber (mobile.getString (j), Contact.PhoneType.mobile);
                             } catch (JSONException ex) {
+                                log.error ("Bogus JSON Response on AutoConfig Query", ex);
                             }
 
                             returnList.add (c);
@@ -357,25 +472,24 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
      * @param event the event with the call data
      */
     @Subscribe public void onExecuteCTICallEvent (ExecuteCTICallEvent event) {
-        originateCall(event.getNumberToCall (), event.getTargetCallerId ());
+        event.setResponse (originateCall(event.getNumberToCall (),
+                                         event.getTargetCallerId ()));
     }
 
     /**
      * Call Origination
-     * @param targetNumber
-     * @param signalledCallerid
+     * @param targetNumber Number to be called
+     * @param signalledCallerid CallerId to be presented
      * @return call scheduled / call not scheduled
      */
-    public Boolean originateCall (String targetNumber, String signalledCallerid) {
+    private Boolean originateCall (String targetNumber, String signalledCallerid) {
         JSONObject originationData = new JSONObject ();
         originationData.put ("call_destination", targetNumber);
         originationData.put ("signalled_callerid", signalledCallerid);
 
-        HttpResponse<JsonNode> jsonResponse = this.doJsonRequest (Unirest.post (this.serviceURL + "/originateCall")
-                                                                          .header ("accept", "application/json")
-                                                                          .header ("Content-Type", "application/json; charset=UTF-8")
-                                                                          .body (new JsonNode (originationData.toString ()))
-                                                                          .getHttpRequest ());
+        HttpResponse<JsonNode> jsonResponse = this.doJsonRequest (this.postRequest ("/originateCall")
+                                                                      .body (new JsonNode (originationData.toString ()))
+                                                                      .getHttpRequest ());
 
         if (jsonResponse != null) {
             try {
@@ -408,25 +522,23 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
     }
 
     /**
-     * Set Workstate
+     * Set workstate
      * @return Successful/Failed
      */
     public Boolean setWorkstate (InterfaceConstants.WorkstateTypes targetWorkstate) {
         JSONObject workstateData = new JSONObject ();
         workstateData.put ("new_state", targetWorkstate.toString ());
 
-        HttpResponse<JsonNode> jsonResponse = this.doJsonRequest (Unirest.post (this.serviceURL + "/workstate")
-                                                                          .header ("accept", "application/json")
-                                                                          .header ("Content-Type", "application/json; charset=UTF-8")
-                                                                          .body (new JsonNode (workstateData.toString ()))
-                                                                          .getHttpRequest ());
+        HttpResponse<JsonNode> jsonResponse = this.doJsonRequest (this.postRequest ("/workstate")
+                                                                      .body (new JsonNode (workstateData.toString ()))
+                                                                      .getHttpRequest ());
 
         if (jsonResponse != null) {
             try {
                 JSONObject body = jsonResponse.getBody ().getObject ();
                 String status = (String) body.get ("responseStatus");
                 if (status.equals ("OK")) {
-                    log.info ("Workstate successfully changed to " + targetWorkstate.toString ());
+                    log.info ("workstate successfully changed to " + targetWorkstate.toString ());
                     return true;
                 }
                 else {
@@ -447,10 +559,8 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
      * @return the current workstate of the user or null if query/data failed
      */
     public InterfaceConstants.WorkstateTypes getWorkstate () {
-        HttpResponse<JsonNode> jsonResponse = this.doJsonRequest (Unirest.get (this.serviceURL + "/workstate")
-                                                                          .header ("accept", "application/json")
-                                                                          .header ("Content-Type", "application/json; charset=UTF-8")
-                                                                          .getHttpRequest ());
+        HttpResponse<JsonNode> jsonResponse = this.doJsonRequest (this.getRequest ("/workstate")
+                                                                      .getHttpRequest ());
 
         if (jsonResponse != null) {
             try {

@@ -5,6 +5,7 @@ package de.neue_phase.asterisk.ClickDial.widgets;
 
 import java.io.File;
 
+import de.neue_phase.asterisk.ClickDial.controller.BaseController;
 import org.apache.log4j.Logger;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.Image;
@@ -26,8 +27,7 @@ import de.neue_phase.asterisk.ClickDial.boot.Bootstrap;
  */
 
 public class SplashScreen {
-	private Display 	display 	= Display.getCurrent();
-	private final Shell shell 		= new Shell(Bootstrap.primaryShell, SWT.APPLICATION_MODAL);
+	private Shell shell 			= null;
 	private ProgressBar bar  		= null;
 	private Label descText			= null;
 	private int	  lastCount			= 0;
@@ -48,9 +48,8 @@ public class SplashScreen {
 		  *  	<progress>
 		  *  	<say-what-you-are-doing-text-area>
 		  *  Layout
-		*/  
-		if (display == null)
-			log.error ("FATAL! Splash screen has gotten a display which equals null!");
+		*/
+		this.shell = new Shell(BaseController.getInstance ().getPrimaryShell (), SWT.APPLICATION_MODAL);
 	 
 		/* add the image */
 		final Label label = new Label(shell, SWT.NONE);
@@ -60,7 +59,7 @@ public class SplashScreen {
 		if (f.exists()) 
 		{ 
 			/* load the image */
-			Image splashImage = new Image(display, f.getPath());
+			Image splashImage = new Image(BaseController.getInstance ().getMainDisplay (), f.getPath());
 		    label.setImage(splashImage);
 		    label.pack();
 		    Rectangle labelSize = splashImage.getBounds();
@@ -78,7 +77,6 @@ public class SplashScreen {
 			shell.setSize(200, 200);
 		
 		shellSize = shell.getBounds();
-		System.out.println("ShellSize: " + shellSize);
 		/* add the progress bar */
 		bar = new ProgressBar(shell, SWT.NONE);
 		bar.setMaximum(maxCount);
@@ -99,30 +97,19 @@ public class SplashScreen {
 							(Bootstrap.priMonSize.height - shellSize.height) / 2
 						 );
 
-        Listener l = new Listener() {
-            public void handleEvent(Event e)  {
-				if (e.type == SWT.Paint) {
-				}
-            }
-        };
-        shell.addListener(SWT.Paint, l);
-        shell.addListener(SWT.FOCUSED, l);
 	}
-	
-	/**
-	 * raise the progress bar counter 
-	 */
-	private void raiseCounter () {
-		bar.setSelection(++lastCount);
-	}
+
 
 	/** 
 	 * set the new Describing text, what is currently done
 	 * @param text new text which will be shown below the progress bar
 	 */
 	public void setDescribingText (String text) {
-		descText.setText(text);
-		this.raiseCounter();
+		log.debug ("setDescribingText: " + text + " (run: "+ lastCount + ")");
+		this.descText.getDisplay ().asyncExec (() -> {
+												   descText.setText (text);
+												   bar.setSelection(++lastCount);
+											   });
 	}
 	
 	/**
@@ -146,10 +133,11 @@ public class SplashScreen {
 				!shell.isDisposed () && 
 				shell.isVisible ()) 
 		{
-			if (!display.readAndDispatch()) 
-					display.sleep();
+			if (!BaseController.getInstance ().getMainDisplay ().readAndDispatch())
+				BaseController.getInstance ().getMainDisplay ().sleep();
 		}
-		
+		log.debug (String.format ("Completed maxCounts (%d/%d) of splash screen and therefore disposing it.",
+								  lastCount, this.maxCount));
 		shell.dispose();
 	}
 }

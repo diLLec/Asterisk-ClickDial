@@ -10,11 +10,11 @@ import org.eclipse.swt.widgets.Display;
 
 public class SettingsController extends ControllerBaseClass {
 
-    private final Display displayRef 	= Display.getCurrent();
-    private final SettingsWindow widget = new SettingsWindow (displayRef, settingsRef);
+    private SettingsWindow widget = null;
 
     public SettingsController(SettingsHolder settingsRef, BaseController b) {
         super (settingsRef, b);
+        widget      = new SettingsWindow (settingsRef);
         type		= ControllerConstants.ControllerTypes.Settings;
     }
 

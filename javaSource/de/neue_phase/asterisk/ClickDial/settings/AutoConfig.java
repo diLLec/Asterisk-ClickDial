@@ -86,7 +86,7 @@ public class AutoConfig {
         }
 
         if (updatedGroups.size () > 0)
-            EventBusFactory.getThradPerTaskEventBus ().post (new SettingsUpdatedEvent (updatedGroups));
+            EventBusFactory.getThreadPerTaskEventBus ().post (new SettingsUpdatedEvent (updatedGroups));
     }
 
 

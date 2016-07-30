@@ -4,6 +4,7 @@ import java.io.File;
 import java.util.HashMap;
 
 import com.google.common.eventbus.Subscribe;
+import de.neue_phase.asterisk.ClickDial.controller.BaseController;
 import de.neue_phase.asterisk.ClickDial.eventbus.events.ManagerProblemEvent;
 import de.neue_phase.asterisk.ClickDial.eventbus.events.ManagerProblemResolveEvent;
 import org.eclipse.swt.SWT;
@@ -26,8 +27,8 @@ import javax.swing.*;
 
 public class TrayIcon {
 
-	private final Display     displayRef 	= Display.getCurrent();
-	private Tray		tray				= displayRef.getSystemTray();
+	private final Display     displayRef 	= Display.getDefault ();
+	private Tray		tray				= null;
 	private TrayItem	trayItem			= null;
 	private TrayIconController tictrl		= null;
 	private Menu menu						= null;
@@ -52,18 +53,21 @@ public class TrayIcon {
 	 */
 	public TrayIcon(TrayIconController ctrl, String[] menuItems) {
 		tictrl 			= ctrl;
-		this.menuItems 	= menuItems; 
-		initTrayItem();
-		initTrayMenu ();
+		this.menuItems 	= menuItems;
 
-		trayItem.addMenuDetectListener(ctrl);
+        this.displayRef.asyncExec (() -> {
+            this.tray = displayRef.getSystemTray();
+            initTrayItem();
+            initTrayMenu ();
+            this.trayItem.addMenuDetectListener(ctrl);
+        });
 	}
 	
 	/**
 	 * give the icon a menu
 	 */
 	private void initTrayMenu () {
-		menu = new Menu (Bootstrap.primaryShell, SWT.POP_UP);
+		menu = new Menu (BaseController.getInstance ().getPrimaryShell (), SWT.POP_UP);
 		MenuItem item;
 
         initLampsInMenu();
@@ -72,7 +76,6 @@ public class TrayIcon {
         new MenuItem(menu, SWT.SEPARATOR);
 
 		for (String itemText : menuItems) {
-			
 			if ( itemText == null )
 				continue;
 			
@@ -132,7 +135,7 @@ public class TrayIcon {
         workstateImages.put(WorkstateTypes.Pause, new Image(displayRef, f.getPath()));
 
         workstate.setText ("Arbeitsstatus");
-        Menu submenu    = new Menu (Bootstrap.primaryShell, SWT.DROP_DOWN);
+        Menu submenu    = new Menu (BaseController.getInstance ().getPrimaryShell (), SWT.DROP_DOWN);
         MenuItem sub    = new MenuItem(submenu, SWT.PUSH);
         sub.setText (WorkstateTypes.Arbeit.toString ());
         sub.setImage (workstateImages.get (WorkstateTypes.Arbeit));
@@ -230,7 +233,7 @@ public class TrayIcon {
         if (currentTip != null)
             currentTip.dispose ();
 
-        ToolTip currentTip = new ToolTip (Bootstrap.primaryShell, type);
+        ToolTip currentTip = new ToolTip (BaseController.getInstance ().getPrimaryShell (), type);
         currentTip.setMessage (message);
         currentTip.setAutoHide (true);
         trayItem.setToolTip (currentTip);

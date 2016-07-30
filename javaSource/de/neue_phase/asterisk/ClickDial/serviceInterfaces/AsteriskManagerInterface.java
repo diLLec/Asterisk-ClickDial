@@ -1,6 +1,7 @@
 package de.neue_phase.asterisk.ClickDial.serviceInterfaces;
 
 import com.google.common.eventbus.Subscribe;
+import de.neue_phase.asterisk.ClickDial.constants.ServiceConstants;
 import de.neue_phase.asterisk.ClickDial.eventbus.EventBusFactory;
 import de.neue_phase.asterisk.ClickDial.eventbus.events.ManagerInsufficientAuthDataEvent;
 import de.neue_phase.asterisk.ClickDial.eventbus.events.ManagerProblemEvent;
@@ -10,15 +11,15 @@ import de.neue_phase.asterisk.ClickDial.eventbus.events.SettingsUpdatedEvent;
 import org.apache.http.auth.AUTH;
 import org.apache.log4j.Logger;
 
-import org.asteriskjava.manager.AuthenticationFailedException;
-import org.asteriskjava.manager.ManagerConnection;
-import org.asteriskjava.manager.ManagerConnectionFactory;
-import org.asteriskjava.manager.ManagerConnectionState;
+import org.asteriskjava.manager.*;
 
 import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants;
 import de.neue_phase.asterisk.ClickDial.constants.SettingsConstants.SettingsTypes;
 import de.neue_phase.asterisk.ClickDial.controller.exception.InitException;
+import org.asteriskjava.manager.event.*;
 
+import java.awt.*;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -29,18 +30,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @author Michael Konietzny <Michael.Konietzny@neue-phase.de>
  */
 
-public class AsteriskManagerInterface implements IServiceInterface, Runnable {
-
-	private  enum ConnectionState {
-		NOT_CONNECTED,
-		CONNECTED_AUTH_FAIL,
-		AUTHENTICATED
-	}
+public class AsteriskManagerInterface implements IServiceInterface, Runnable, ManagerEventListener {
 
     protected Thread        interfaceCheckThread            = null;
 	protected AtomicBoolean problemTriggered				= new AtomicBoolean (false);
 	protected AtomicBoolean shutdownInterface				= new AtomicBoolean (false);
-	private volatile ConnectionState	internalState		= ConnectionState.NOT_CONNECTED;
+	private CountDownLatch  authenticationDone      		= new CountDownLatch(1);
 	private ControllerConstants.ServiceInterfaceTypes type 	= ControllerConstants.ServiceInterfaceTypes.AsteriskManagerInterface;
 	private ManagerConnection 			mcon 				= null;
 	private ManagerConnectionFactory 	mconfact 			= null;
@@ -49,7 +44,72 @@ public class AsteriskManagerInterface implements IServiceInterface, Runnable {
 	private Integer problemTry		 						= 0;
 
 	public AsteriskManagerInterface () {
-        EventBusFactory.getThradPerTaskEventBus ().register (this);
+        EventBusFactory.getThreadPerTaskEventBus ().register (this);
+	}
+
+	/**
+	 * check connection each 2 seconds
+	 */
+	@Override
+	public void run () {
+
+		// initial connect
+		this.reconnect ();
+		authenticationDone.countDown ();
+
+		Integer discoStateIntervals = 0;
+
+		do {
+			log.debug ("ManagerInterface: mcon state = " + mcon.getState ().toString () + " discoIntervals " + discoStateIntervals);
+			if (mcon.getState () == ManagerConnectionState.DISCONNECTED) {
+				discoStateIntervals += 1;
+
+				if (discoStateIntervals % 10 == 0) {
+					problemTriggered.set (true);
+					reconnect ();
+				}
+			}
+
+			else if (mcon.getState () == ManagerConnectionState.RECONNECTING) {
+				if (!problemTriggered.get ()) {
+					problemTriggered.set (true);
+					triggerServiceInterfaceProblem (ControllerConstants.ServiceInterfaceProblems.ConnectionProblem);
+				}
+			}
+
+			else if (mcon.getState () == ManagerConnectionState.CONNECTED) {
+				if (problemTriggered.get ()) {
+					problemTriggered.set (false);
+					discoStateIntervals = 0;
+					EventBusFactory.getDisplayThreadEventBus ().post (new ManagerProblemResolveEvent ());
+				}
+			}
+
+			try {
+				TimeUnit.SECONDS.sleep (ServiceConstants.AsteriskManagerConnectionCheckInterval);
+			} catch (InterruptedException e) {
+				log.debug (e);
+			}
+		} while (!shutdownInterface.get ());
+	}
+
+	/**
+	 * startUp Routine of AsteriskConnectionController
+	 * @throws InitException if there is something wrong with the connection
+	 */
+	@Override
+	public void startUp () throws InitException {
+		log.debug ("AsteriskManagerInterface startup()");
+
+		// start the checker thread
+		interfaceCheckThread = new Thread(this);
+		interfaceCheckThread.start ();
+
+		try {
+			authenticationDone.await ();
+		} catch (InterruptedException e) {
+			log.debug (e);
+		}
 	}
 
 	/**
@@ -105,66 +165,7 @@ public class AsteriskManagerInterface implements IServiceInterface, Runnable {
 		}
 	}
 
-    /**
-     * check connection each 2 seconds
-     */
-    @Override
-    public void run () {
 
-        Integer discoStateIntervals = 0;
-
-        do {
-            log.debug ("ManagerInterface: internaleState = " + internalState.toString () + " mcon state = " + mcon.getState ().toString () + " discoIntervals " + discoStateIntervals);
-            if (mcon.getState () == ManagerConnectionState.DISCONNECTED) {
-                discoStateIntervals += 1;
-
-                if (discoStateIntervals % 10 == 0) {
-                    problemTriggered.set (true);
-                    reconnect ();
-                }
-            }
-
-            else if (mcon.getState () == ManagerConnectionState.RECONNECTING) {
-                if (!problemTriggered.get ()) {
-                    problemTriggered.set (true);
-                    triggerServiceInterfaceProblem (ControllerConstants.ServiceInterfaceProblems.ConnectionProblem);
-                }
-            }
-
-            else if (mcon.getState () == ManagerConnectionState.CONNECTED) {
-                if (problemTriggered.get ()) {
-                    problemTriggered.set (false);
-                    discoStateIntervals = 0;
-                    internalState = ConnectionState.AUTHENTICATED;
-                    EventBusFactory.getDisplayThreadEventBus ().post (new ManagerProblemResolveEvent ());
-                }
-            }
-
-            try {
-                TimeUnit.SECONDS.sleep (2);
-            } catch (InterruptedException e) {}
-        } while (!shutdownInterface.get ());
-    }
-
-	/**
-	 * startUp Routine of AsteriskConnectionController
-	 * @throws InitException if there is something wrong with the connection
-	 */
-	@Override 
-	public void startUp () throws InitException {
-		log.debug ("AsteriskManagerInterface startup()");
-        this.reconnect ();
-
-        // start the checker thread
-        interfaceCheckThread = new Thread(this);
-        interfaceCheckThread.start ();
-
-		if (this.mcon.getState () != ManagerConnectionState.CONNECTED) {
-            triggerServiceInterfaceProblem (ControllerConstants.ServiceInterfaceProblems.ConnectionProblem);
-            throw new InitException ("AsteriskManagerWebservice could not be established");
-        }
-
-	}
 
 	@Override
 	public synchronized void shutdown () {
@@ -202,6 +203,8 @@ public class AsteriskManagerInterface implements IServiceInterface, Runnable {
 
 		mcon 	 = mconfact.createManagerConnection();
 		mcon.setSocketTimeout (timeout);
+		mcon.addEventListener (this);
+
 		try {
 			mcon.login();
 			log.debug("Manager Connection established");
@@ -209,7 +212,6 @@ public class AsteriskManagerInterface implements IServiceInterface, Runnable {
 		}
 		catch (AuthenticationFailedException e) {
             log.debug("Manager Connection authentication failed");
-			this.internalState = ConnectionState.CONNECTED_AUTH_FAIL;
 		}
 		catch (Exception e) {
 			log.debug("Manager Connection could not be established", e);
@@ -232,5 +234,16 @@ public class AsteriskManagerInterface implements IServiceInterface, Runnable {
 		return mcon.getUsername();
 	}
 
+    /**
+     * event handler for manager Events
+     * @param managerEvent
+     */
+    @Override
+    public void onManagerEvent (ManagerEvent managerEvent) {
+        if (managerEvent instanceof NewStateEvent || managerEvent instanceof UserEvent || managerEvent instanceof NewChannelEvent ||
+            managerEvent instanceof HangupEvent) { // filter at least a little what comes through
+            EventBusFactory.getDisplayThreadEventBus ().post (managerEvent);
+        }
 
+    }
 }

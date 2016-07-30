@@ -27,7 +27,7 @@ public class InterfaceConstants {
 	
 	public static final String  DialWindowBackgroundImage = "lib\\icons\\HG.png";
 	public static final boolean DialWindowUseAlpha 		  = true;
-	public static final Color	DialWindowBackground	  = new Color(Display.getCurrent(),190,190,190);
+	public static final Color	DialWindowBackground	  = new Color(Display.getDefault (),190,190,190);
 	
 	/**
 	 * @see de.neue_phase.asterisk.ClickDial.controller.DialWindowController

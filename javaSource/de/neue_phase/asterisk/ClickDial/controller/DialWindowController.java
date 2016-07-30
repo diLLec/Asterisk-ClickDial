@@ -47,7 +47,6 @@ implements IContentProposalListener, SelectionListener, IContentProposalListener
 {
 
     private AtomicBoolean originatedCallGoing   = new AtomicBoolean (false);
-	private Display     displayRef 			    = Display.getCurrent();
 	private DialWindow	dialWindow 			    = null;
 
 	private AtomicBoolean findProposalRunning	= new AtomicBoolean (false);
@@ -72,9 +71,11 @@ implements IContentProposalListener, SelectionListener, IContentProposalListener
 	
 	public void startUp () throws InitException  {
 		/* we have every setting we want - startup */
-		
-		dialWindow = new DialWindow(displayRef, this);
-		dialWindow.startMe();
+
+		Display.getDefault ().asyncExec (() -> {
+			dialWindow = new DialWindow (this);
+			dialWindow.startMe ();
+		});
 
         EventBusFactory.getDisplayThreadEventBus ().register (this); // for FoundContactEvents
 	}
@@ -103,7 +104,7 @@ implements IContentProposalListener, SelectionListener, IContentProposalListener
 
             // trigger call origination by event
             ExecuteCTICallEvent callEvent = new ExecuteCTICallEvent (cid);
-            EventBusFactory.getThradPerTaskEventBus ().post (callEvent);
+            EventBusFactory.getThreadPerTaskEventBus ().post (callEvent);
             Boolean response = callEvent.getReponse (ServiceConstants.WebserviceTimeout);
             if (response) {
                 originatedCallGoing.set(true);
@@ -128,7 +129,7 @@ implements IContentProposalListener, SelectionListener, IContentProposalListener
 		log.debug ("proposalPopupOpened");
 
         if (!findProposalRunning.get ()) {
-            EventBusFactory.getThradPerTaskEventBus ().post (new FindContactEvent (this.dialWindow.getText ()));
+            EventBusFactory.getThreadPerTaskEventBus ().post (new FindContactEvent (this.dialWindow.getText ()));
             findProposalRunning.set (true);
         }
     }

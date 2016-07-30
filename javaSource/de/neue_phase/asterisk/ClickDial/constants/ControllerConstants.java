@@ -30,7 +30,8 @@ public class ControllerConstants {
 
 	public enum JobTypes {
 		AutoConfig,
-        WorkstateGetter
+        WorkstateGetter,
+		ScreenLockWatcherJob
 	}
 	/**
 	 * @see de.neue_phase.asterisk.ClickDial.controller.DialWindowController

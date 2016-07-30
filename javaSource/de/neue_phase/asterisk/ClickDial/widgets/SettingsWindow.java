@@ -5,6 +5,7 @@ import java.util.Iterator;
 import java.util.ArrayList;
 import java.util.Map.Entry;
 
+import de.neue_phase.asterisk.ClickDial.controller.BaseController;
 import org.apache.log4j.Logger;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.Color;
@@ -57,25 +58,10 @@ public class SettingsWindow implements Listener {
 
 	private TreeItem lastEventButton	= null;
 	private Tree	 tree				= null;
-	private Rectangle treeBounds		= null;
-	private Rectangle shellBounds		= null;
 
-	public SettingsWindow(Display displayRef, SettingsHolder settings) {
-		this.displayRef 	= Display.getCurrent();
+	public SettingsWindow(SettingsHolder settings) {
+		this.displayRef 	= Display.getDefault ();
 		this.settingsRef 	= settings;
-		
-		shell = new Shell (Bootstrap.primaryShell, SWT.APPLICATION_MODAL | SWT.TITLE | SWT.CLOSE );
-		shell.addListener(SWT.Close, this);
-		shell.setText("Asterisk ClickDial Settings Window");
-	}
-	
-	/**
-	 * reset the bounds of the compo, since this gets 
-	 * modified if we do compo.pack()
-	 *
-	 */
-	private void resetCompoBounds () {
-		
 	}
 	
 	/**
@@ -92,35 +78,38 @@ public class SettingsWindow implements Listener {
 	 * @return error_code of the SettingsWindow (clears if saving was ok)
 	 */
 	public int open( SettingsConstants.SettingsTypes type ) {
+		shell = new Shell (BaseController.getInstance ().getPrimaryShell (), SWT.APPLICATION_MODAL | SWT.TITLE | SWT.CLOSE );
+		shell.addListener(SWT.Close, SettingsWindow.this);
+		shell.setText("Asterisk ClickDial Settings Window");
 
         shell.setSize(	SettingsConstants.SettingsWindow_width, 
   			  			SettingsConstants.SettingsWindow_heigth
   			  		  );
-        shellBounds = shell.getBounds();
-        
-        
-        GridLayout gridShell = new GridLayout(2, false);
-        shell.setLayout(gridShell);
 
-        // -- build the upper menu 
-        buildMenu(type);
+        GridLayout grid = new GridLayout(2, false);
+        shell.setLayout(grid);
+
+        // -- build the upper menu
+		GridData treeLayoutData = new GridData(SWT.BEGINNING, SWT.BEGINNING, false, true);
+		treeLayoutData.widthHint 	= (int) (SettingsConstants.SettingsWindow_width * 0.15);
+		treeLayoutData.heightHint 	= SettingsConstants.SettingsWindow_heigth;
+        buildMenu(treeLayoutData);
 
 		// -- create the composite area, where all forms will be placed on  
         compo = new Composite(shell, SWT.NORMAL);
-        
-        GridData compoGridData 		= new GridData(GridData.FILL_BOTH);
-        compoGridData.widthHint 	= (shellBounds.width / 4) * 3 - 35;
-        compoGridData.heightHint	= shellBounds.width - 50;
-        compoGridData.verticalAlignment 	= GridData.BEGINNING;
-        compoGridData.horizontalAlignment 	= GridData.BEGINNING;
 
+        GridData compoGridData 		= new GridData(SWT.END, SWT.BEGINNING, true, true);
+		compoGridData.heightHint 	= SettingsConstants.SettingsWindow_heigth;
+		compoGridData.widthHint 	= (int) (SettingsConstants.SettingsWindow_width * 0.85);
         compo.setLayoutData(compoGridData);
-        GridLayout gridCompo = new GridLayout(2, true);
-        gridCompo.numColumns = 2;
-        
-        compo.setLayout(gridCompo);
+		log.debug ("Composite has the following layout widthHint: " + ((GridData) compo.getLayoutData ()).widthHint);
+
+		GridLayout formLayout = new GridLayout (2, false);
+        compo.setLayout(formLayout);
         compo.setBackground(new Color(displayRef, 255, 255, 255));
-        this.resetCompoBounds();
+
+		// -- bring up the standard view
+		showView(type);
 
         // make this thing moveable! 
         Listener l = new Listener() {
@@ -142,15 +131,11 @@ public class SettingsWindow implements Listener {
         shell.addListener(SWT.MouseDown, l);
         shell.addListener(SWT.MouseMove, l);
         shell.addListener(SWT.Paint, l);
-       
-        // -- bring up the standard view 
-        showView(type);
-        
+
         /* locate this element in the middle of the primary screen  */
 		Rectangle shellSize 	= shell.getBounds();
 		Rectangle r 			= Bootstrap.priMonSize;
 		shell.setLocation(  (r.width - shellSize.width) / 2 , (r.height - shellSize.height) / 2);
-		
 
 		shell.open();
 		while (!shell.isDisposed ()) {
@@ -162,24 +147,14 @@ public class SettingsWindow implements Listener {
 
 	/**
 	 * build the tree menu
-	 * @param type
 	 */
-	private void buildMenu (SettingsConstants.SettingsTypes type) {
+	private void buildMenu (GridData treeLayoutData) {
 		// -- firstly create a tree
 		log.debug ("building menu");
 		this.tree 	= new Tree (shell, SWT.SINGLE );
 		
 		// -- then set the layout data to place it
-		GridData treeGridData 				= new GridData(SWT.FILL);
-		treeGridData.verticalAlignment	 	= GridData.FILL;
-		treeGridData.horizontalAlignment 	= GridData.FILL;
-		treeGridData.widthHint 		= SettingsConstants.SettingsWindow_width / 4;
-		treeGridData.heightHint 	= SettingsConstants.SettingsWindow_heigth - 100;
-		
-		tree.setSize(treeGridData.widthHint, treeGridData.heightHint);
-		
-		tree.setLayoutData(treeGridData);
-		
+		tree.setLayoutData(treeLayoutData);
 
 		// -- get all registered expanders
 		Iterator<Entry<SettingsConstants.SettingsExpander, ArrayList<SettingsAbstractMaster>>> i  = settingsRef.getRegisteredExpanders();		
@@ -200,6 +175,7 @@ public class SettingsWindow implements Listener {
 		while (i.hasNext()) 
 		{
 			entry = i.next();
+
 			// -- we create the 'uber' item
 			expander = new TreeItem (tree, SWT.NORMAL);
 			expander.setText(entry.getKey().toString());
@@ -228,12 +204,7 @@ public class SettingsWindow implements Listener {
 			}
 		}
 
-		arrow = null;
-
 		tree.addListener(SWT.MouseDown, this);
-		
-		treeBounds 		 = tree.getBounds();
-		treeBounds.width = treeGridData.widthHint;
 	}
 	
 	/** 
@@ -290,7 +261,6 @@ public class SettingsWindow implements Listener {
 	 * hide current settings view
 	 *
 	 */
-	
 	private void hideCurrentView () {
 		log.debug ("Hiding view "+ this.currentView);
 		
@@ -305,20 +275,17 @@ public class SettingsWindow implements Listener {
 			}
 		}
 	}
-	
+
 	/**
 	 * build the new elements out of field definitions
 	 * @param type the new view which should be shown
-	 */
-	
-	private void showView ( SettingsConstants.SettingsTypes type ) {
+     */
+	private void showView ( SettingsConstants.SettingsTypes type) {
 		
 		log.debug ("Showing new view "+ type);
 		
 		Iterator <SettingsElement> i = settingsRef.getSettingsElements(type);
 		SettingsElement element;
-		int currentHeight = 50;
-		
 		
 		/* setting the current view */
 		this.currentView = type;
@@ -326,50 +293,39 @@ public class SettingsWindow implements Listener {
 		while (i.hasNext()) 
 		{
 			element = i.next();
-			log.debug("showView: Element " + element.getName());
 			if (element.isVisible()) 
 			{
-				log.debug("showView 1 : Element " + element.getName());
-				currentHeight += 20;
-
 				if (element.isReferencingFieldUsable()) {
 					// -- if the element got a referencing field - simply show it again
-					log.debug("showView only show it : Element " + element.getName());
 					element.getReferencingSettingsField().show();
 					continue;
 				}
-				log.debug("showView create it : Element " + element.getName());
-				//  -- if not - build it 
 				
 				SettingsViewReferencer ref  = new SettingsViewReferencer();
-				GridData data 				= new GridData();
-				data.exclude 				= false;
-				data.horizontalAlignment    = GridData.BEGINNING;
+				GridData data 				= new GridData(SWT.BEGINNING, SWT.CENTER, false, false);
+				data.widthHint				= (int) (((GridData)compo.getLayoutData ()).widthHint * 0.50);
+				//data.minimumWidth				= (int) (((GridData)compo.getLayoutData ()).widthHint * 0.50);
 
 				Label l = new Label(compo, SWT.LEFT);
 				l.setBackground(new Color(displayRef, 255,255,255));
 				l.setText(element.getOfficialName());
-				l.setSize(80, 18);
 				l.setLayoutData(data);
 				ref.addElement(l);
 
-				data 						= new GridData();
-				data.exclude 				= false;
-				data.horizontalAlignment    = GridData.END;
-				data.widthHint				= 100;
-				/**
+				data 						= new GridData(SWT.BEGINNING, SWT.CENTER, false, false);
+				data.widthHint				= (int) (((GridData)compo.getLayoutData ()).widthHint * 0.30);
+				/*
 				 * text buildings 
 				 */
 				if (element.getType().equals(SettingsElementType.text)) {
 			
 					Text t = new Text(compo, SWT.SINGLE | SWT.BORDER);
 					t.setBackground(new Color(displayRef, 255,255,255));
-					t.setSize(100, 18);
 					t.setLayoutData(data);
-					
+					log.debug ("width of text is: " + data.widthHint);
+
 					if (element.getValue() != null) {
 						t.setText(element.getValue());
-						log.debug("Setting Text: " +element.getValue());
 					}
 
 					if (element.isDisabled ())
@@ -383,12 +339,10 @@ public class SettingsWindow implements Listener {
 					
 					Button b = new Button(compo, SWT.CHECK);
 					b.setBackground(new Color(displayRef, 255,255,255));
-					b.setSize(100, 18);
 					b.setLayoutData(data);
 					b.setAlignment(SWT.LEFT);
 					if (element.getValue() != null) {
 						b.setSelection(element.getValue().equals("1"));
-						log.debug("Button enabled?! : " + element.getValue());
 					}
 
 					if (element.isDisabled ())
@@ -441,11 +395,10 @@ public class SettingsWindow implements Listener {
 					Spinner spinner		= new Spinner(compo, SWT.NORMAL);
 					if (min_max.length == 2 && min_max[0] != null && min_max[1] != null)
 					{
-						spinner.setMinimum(new Integer(min_max[0]).intValue());
-						spinner.setMaximum(new Integer(min_max[1]).intValue());
+						spinner.setMinimum(new Integer (min_max[0]));
+						spinner.setMaximum(new Integer (min_max[1]));
 					}
 					spinner.setSelection( new Integer(element.getValue()) );
-					spinner.setSize(100, 18);
 					spinner.setLayoutData(data);
 
 					if (element.isDisabled ())
@@ -465,9 +418,8 @@ public class SettingsWindow implements Listener {
 	
 	/** 
 	 * the function which is called when we need to closedown
-	 * @param returnCode ?
+	 * @param returnCode The returncode which is set after the widget is closed down
 	 */
-	
 	private void closeMe (int returnCode) {
 		
 		this.saveAll ();

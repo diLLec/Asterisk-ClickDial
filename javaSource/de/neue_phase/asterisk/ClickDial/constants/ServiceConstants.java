@@ -5,19 +5,18 @@ public class ServiceConstants {
     /** The URL where the webservice can be reached - we hardcode this for now */
     public static final String WebserviceURL = "http://192.168.56.250/webservice/webserviceJson.php";
 
-    /** The interval in which the AutoConfigJob will check for new AutoConfig data */
-    public static final Integer	AutoConfigJobInterval = 600000; // 5 minutes
-
-    /** The variance which will be added to the Interval above to prevent peaks on the Webservice */
-    public static final Integer	AutoConfigJobIntervalVariance = 5000; // 5 seconds variant
-
-    /** The interval in which the WorkstateGetter will check for new Workstate data */
-    public static final Integer	WorkstateGetterJobInterval = 5000; // 5 seconds
-
-    /** The variance which will be added to the Interval above to prevent peaks on the Webservice */
-    public static final Integer	WorkstateGetterIntervalVariance = 1000; // 1 seconds variant
-
+    /** on which interval the connection is checked */
+    public static final Integer WebserviceConnectionCheckInterval = 1000;
 
     /** How Long to wait for a Webservice Event (!) to come back*/
     public static final Integer WebserviceTimeout = 1000;
+
+    /** How long to wait for a connect (the time it takes to connect to a server) */
+    public static final Integer WebserviceConnectTimeout = 1000;
+
+    /** How long to wait for data to be received */
+    public static final Integer WebserviceSocketTimeout = 2000;
+
+    /** on which interval the connection is checked */
+    public static final Integer AsteriskManagerConnectionCheckInterval = 500;
 }

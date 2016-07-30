@@ -20,7 +20,7 @@ public class EventBusFactory{
         return displayThreadEventBus;
     }
 
-    public static AsyncEventBus getThradPerTaskEventBus () {
+    public static AsyncEventBus getThreadPerTaskEventBus () {
         return threadPerTaskEventBus;
     }
 

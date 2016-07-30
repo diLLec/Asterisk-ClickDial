@@ -2,6 +2,7 @@ package de.neue_phase.asterisk.ClickDial.widgets;
 
 import java.io.File;
 
+import de.neue_phase.asterisk.ClickDial.controller.BaseController;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.events.SelectionListener;
@@ -24,8 +25,7 @@ import de.neue_phase.asterisk.ClickDial.boot.Bootstrap;
  */
 
 public class UserActionBox implements SelectionListener {
-		private final Shell  shell 	= new Shell (Bootstrap.primaryShell, SWT.APPLICATION_MODAL | SWT.TITLE);
-		private final Display display = Display.getCurrent();;
+		private Shell  shell 	= null;
 		 
 		private String returnValue  = "";
 		private int    buttonXoffset  = 0;
@@ -42,8 +42,8 @@ public class UserActionBox implements SelectionListener {
 		}
 		
 		public UserActionBox(String message, SettingsImages image, boolean moveAbove) {
+			shell 	= new Shell (BaseController.getInstance ().getPrimaryShell (), SWT.APPLICATION_MODAL | SWT.TITLE);
 			shell.setText("User interaction needed");
-
 			text = new Label (shell, SWT.NORMAL | SWT.WRAP);
 			text.setText(message);
 			text.setLocation(50, 15);
@@ -57,6 +57,7 @@ public class UserActionBox implements SelectionListener {
 		}
 		
 		public String open () {
+
 			Rectangle r = text.getBounds();
 			System.out.println("Button x offset: " + buttonXoffset + " rwidth: " + r.width);
 			if (buttonXoffset > r.x  + r.width)
@@ -72,7 +73,8 @@ public class UserActionBox implements SelectionListener {
 			shell.open();
 			
 			while (!shell.isDisposed () && shell.isVisible ()) {
-				if (!display.readAndDispatch()) display.sleep();
+				if (!BaseController.getInstance ().getMainDisplay ().readAndDispatch())
+					BaseController.getInstance ().getMainDisplay ().sleep();
 			}
 			
 			return returnValue;
@@ -106,7 +108,7 @@ public class UserActionBox implements SelectionListener {
 			System.out.println("Searching "+imageName.toString()+" image here: " + f.getPath());
 			if (f.exists()) {
 				image = new Label (shell, SWT.NORMAL);
-				image.setImage(new Image(display, f.getPath()));
+				image.setImage(new Image(BaseController.getInstance ().getMainDisplay (), f.getPath()));
 				image.setLocation(15, 15);
 				image.pack();
 			}

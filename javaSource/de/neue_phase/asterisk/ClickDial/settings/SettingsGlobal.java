@@ -14,8 +14,8 @@ public class SettingsGlobal extends SettingsAbstractMaster {
 
 	private static final long serialVersionUID 				= -8636697812094090038L;
 	protected SettingsConstants.SettingsTypes    type 		= SettingsConstants.SettingsTypes.global;
-	protected SettingsConstants.SettingsExpander expander 	= SettingsConstants.SettingsExpander.Base;
-
+	private SettingsConstants.SettingsExpander expander 	= SettingsConstants.SettingsExpander.Base;
+	private Integer monitorCount = 0;
 
 	public SettingsGlobal() {
 		super();
@@ -26,7 +26,7 @@ public class SettingsGlobal extends SettingsAbstractMaster {
 		super.initializeSettings();
 
 		SettingsElement tmp;
-		tmp = new SettingsElement("start_minimized", "start window minimized"	, "", SettingsConstants.SettingsElementType.checkbox);
+		tmp = new SettingsElement("start_minimized", "Start ClickDial minimized", "", SettingsConstants.SettingsElementType.checkbox);
 		settings.put(tmp.getName(), tmp);
 
 		tmp = new SettingsElement("naming_forename", "Forename"	, null);
@@ -38,26 +38,28 @@ public class SettingsGlobal extends SettingsAbstractMaster {
 		tmp = new SettingsElement("naming_personal_number", "Telephone number", null);
 		settings.put(tmp.getName(), tmp);
 
-		tmp = new SettingsElement("call_window_monitor", "Which Monitor should be\nused for the Call Window ?", "1", SettingsConstants.SettingsElementType.dropdown);
-		
-		int monitor_count 			= Display.getCurrent().getMonitors().length;
-		String[] dropdown_values 	= new String[monitor_count];
-		for (Integer i = 1; i <= monitor_count; i++)
+		tmp = new SettingsElement("call_window_monitor", "Monitor for call notification", "1", SettingsConstants.SettingsElementType.dropdown);
+
+		Display.getDefault ().syncExec (() -> SettingsGlobal.this.monitorCount = Display.getDefault ().getMonitors().length);
+		log.debug (String.format ("monitor count according to swt: %d", SettingsGlobal.this.monitorCount));
+
+		String[] dropdown_values 	= new String[SettingsGlobal.this.monitorCount];
+		for (Integer i = 1; i <= SettingsGlobal.this.monitorCount; i++)
 			dropdown_values[i-1] = i.toString();
 
 		tmp.registerSpecificSetting("dropdown_values", dropdown_values );
 		settings.put(tmp.getName(), tmp);
 		
-		tmp = new SettingsElement("call_window_from", "From which screen edge should \n the \"new Call Window\" appear ?", "right edge", SettingsConstants.SettingsElementType.dropdown);
+		tmp = new SettingsElement("call_window_from", "Place call notification at", "right edge", SettingsConstants.SettingsElementType.dropdown);
 		tmp.registerSpecificSetting("dropdown_values", new String[] {"lower edge", "right edge", "upper edge", "left edge", } );
 		settings.put(tmp.getName(), tmp);
 
-		tmp = new SettingsElement("call_window_trans", "Maximum CallWindow transparency", "80", SettingsConstants.SettingsElementType.spinner);
+		tmp = new SettingsElement("call_window_trans", "Call notification window transparency", "80", SettingsConstants.SettingsElementType.spinner);
 		tmp.registerSpecificSetting("spinner_min_max", new String[] {"10", "255"} );
 		settings.put(tmp.getName(), tmp);
 
-        tmp = new SettingsElement("text_selection_call_hk", "Hotkey to transfer currently selected \n text into the dial window", "F11", SettingsConstants.SettingsElementType.dropdown);
-        tmp.registerSpecificSetting("dropdown_values", new String[] {"F11", "F10", "STRG+A", "STRG+D" } );
+        tmp = new SettingsElement("text_selection_call_hk", "Hotkey for dial currently selected text", "STRG+A", SettingsConstants.SettingsElementType.dropdown);
+        tmp.registerSpecificSetting("dropdown_values", new String[] {"STRG+A", "STRG+D" } );
         settings.put(tmp.getName(), tmp);
 	}
 	

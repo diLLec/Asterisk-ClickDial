@@ -36,7 +36,7 @@ public class DataSourceController extends ControllerBaseClass implements Control
 		type = ControllerTypes.DataSource;
 		holder = new DataSourceHolder ();
 
-        EventBusFactory.getThradPerTaskEventBus ().register (this); // for SettingsUpdatedEvent
+        EventBusFactory.getThreadPerTaskEventBus ().register (this); // for SettingsUpdatedEvent
 	}
 
     /**

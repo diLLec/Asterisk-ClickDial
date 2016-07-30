@@ -1,0 +1,183 @@
+<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>de.neue_phase.asterisk</groupId>
+  <artifactId>ClickDial</artifactId>
+  <packaging>jar</packaging>
+  <version>0.1-SNAPSHOT</version>
+  <name>Asterisk ClickDial Application</name>
+  <url>http://www.asteriskclickdial.de</url>
+  <dependencies>
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>3.8.1</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>lib</groupId>
+      <artifactId>asterisk-java</artifactId>
+      <version>0.3.1</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>lib</groupId>
+      <artifactId>jacob</artifactId>
+      <version>1.7</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>lib</groupId>
+      <artifactId>log4j</artifactId>
+      <version>1.2.14</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>lib</groupId>
+      <artifactId>swt-win32</artifactId>
+      <version>3.3.1.1</version>
+      <scope>compile</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <defaultGoal>install</defaultGoal>
+    <directory>${basedir}/target</directory>
+    <finalName>${pom.artifactId}-${pom.version}</finalName>
+    <filters>
+      <filter>filters/mky.properties</filter>
+    </filters>
+
+	<!-- this defines, that all content from javaSource is beeing copied and filtered and put into ${basedir}/target/classes -->
+    <resources>
+		
+	  <!-- all jars -->
+	  <resource>
+	  	<targetPath>lib</targetPath>
+    	<directory>${basedir}/build/lib</directory>
+	    <filtering>false</filtering>
+	  </resource>
+	  
+	  <!-- all native libs -->
+	  <resource>
+	  	<targetPath>binlib</targetPath>
+    	<directory>${basedir}/build/binlib</directory>
+	    <filtering>false</filtering>
+	  </resource>
+
+	  <!-- the onejar classfiles -->
+	  <resource>
+	  	<targetPath></targetPath>
+    	<directory>${basedir}/build/onejar</directory>
+	    <filtering>false</filtering>
+	  </resource>
+	</resources>
+
+	<!-- define which stuff we will compile -->
+    <sourceDirectory>${basedir}/javaSource</sourceDirectory>
+    <scriptSourceDirectory>${basedir}/conf</scriptSourceDirectory>
+    <testSourceDirectory>${basedir}/javaSource/test</testSourceDirectory>
+    <outputDirectory>${basedir}/target/classes</outputDirectory>
+    <testOutputDirectory>${basedir}/target/test-classes</testOutputDirectory>
+
+
+    <plugins>
+
+      <!-- compiler is java 1.6.x -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <source>1.6</source>
+          <target>1.6</target>
+        </configuration>
+      </plugin>
+
+      <!-- configure the jar archiver -->
+      <plugin>
+	      <groupId>org.apache.maven.plugins</groupId>
+    	    <artifactId>maven-jar-plugin</artifactId>
+		        <configuration>
+        		  <archive>
+		            <index>true</index>
+        		    <manifest>
+        		    	<mainClass>de.neue_phase.asterisk.ClickDial.boot.Bootstrap</mainClass>
+	            	    <addClasspath>true</addClasspath>
+	            	    <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+      			    </manifest>
+	           	    <addMavenDescriptor>false</addMavenDescriptor>
+		            <manifestEntries>
+        		      <mode>development</mode>
+		              <url>${pom.url}</url>
+		            </manifestEntries>
+        		  </archive>
+	        </configuration>
+      </plugin>
+      <plugin>
+         <artifactId>maven-clean-plugin</artifactId>
+         <version>2.1</version>
+      </plugin>
+      <plugin>
+      	<groupId>org.apache.maven.plugins</groupId>
+      	<artifactId>maven-javadoc-plugin</artifactId>
+      	<configuration>
+      		<outputDirectory>${project.build.directory}</outputDirectory>
+      		<reportOutputDirectory>${project.build.directory}</reportOutputDirectory>
+      		<destDir>javadoc</destDir>
+      	</configuration>
+      </plugin>
+      <plugin>
+      	<groupId>org.apache.maven.plugins</groupId>
+      	<artifactId>maven-rar-plugin</artifactId>
+      	<configuration>
+      		<finalName>${pom.artifactId}-${pom.version}.rar</finalName>
+      		<outputDirectory>${project.build.directory}</outputDirectory>
+      		<includeJar>true</includeJar>
+      	</configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+
+
+  <licenses>
+    <license>
+      <name>BSD</name>
+      <url>http://de.wikipedia.org/wiki/BSD-Lizenz</url>
+      <distribution>manual</distribution>
+      <comments>BSD License</comments>
+    </license>
+  </licenses>
+
+  <organization>
+    <name>NeuePhase</name>
+    <url>http://www.neue-phase.de</url>
+  </organization>
+  <developers>
+    <developer>
+      <id>mky</id>
+      <name>Michael Konietzny</name>
+      <email>michael@konietzny.at</email>
+      <url>http://www.konietzny.at</url>
+      <organization>NeuePhase</organization>
+      <organizationUrl>http://www.neue-phase.de</organizationUrl>
+      <roles>
+        <role>architect</role>
+        <role>developer</role>
+      </roles>
+      <timezone>+1</timezone>
+    </developer>
+  </developers>
+
+  <issueManagement>
+    <system>Trac</system>
+    <url>${pom.url}</url>
+  </issueManagement>
+
+  <repositories>
+    <repository>
+      <id>central</id>
+      <url>http://www.asteriskclickdial.de/m2repo/asterisk-ClickDial</url>
+    </repository>
+  </repositories>
+
+</project>
