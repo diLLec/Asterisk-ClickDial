@@ -2,13 +2,18 @@ package de.neue_phase.asterisk.ClickDial.jobs;
 
 
 import com.google.common.eventbus.EventBus;
+import com.google.common.eventbus.Subscribe;
 import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants;
 import de.neue_phase.asterisk.ClickDial.constants.InterfaceConstants;
 import de.neue_phase.asterisk.ClickDial.constants.JobConstants;
+import de.neue_phase.asterisk.ClickDial.constants.SettingsConstants;
 import de.neue_phase.asterisk.ClickDial.controller.exception.InitException;
 import de.neue_phase.asterisk.ClickDial.eventbus.EventBusFactory;
+import de.neue_phase.asterisk.ClickDial.eventbus.events.GetWorkstateEvent;
 import de.neue_phase.asterisk.ClickDial.eventbus.events.SetWorkstateEvent;
+import de.neue_phase.asterisk.ClickDial.eventbus.events.UpdateWorkstateEvent;
 import de.neue_phase.asterisk.ClickDial.settings.AutoConfig;
+import de.neue_phase.asterisk.ClickDial.settings.SettingsElement;
 import de.neue_phase.asterisk.ClickDial.settings.SettingsHolder;
 import org.apache.log4j.Logger;
 
@@ -28,7 +33,8 @@ public class ScreenLockWatcherJob extends TimerTask implements IJob {
     protected final Logger log 	                    = Logger.getLogger(this.getClass());
     private Timer timer                             = null;
     private Date lastrun                            = null;
-    SettingsHolder settingsHolder                   = null;
+    private SettingsHolder settingsHolder                   = null;
+    private InterfaceConstants.WorkstateTypes initialState  = null;
 
     public ScreenLockWatcherJob () {
 
@@ -38,12 +44,26 @@ public class ScreenLockWatcherJob extends TimerTask implements IJob {
     public void startUp () throws InitException {
         // initial run to check if the AutoConfig webservice call is OK
         // also to ensure, that the configuration is in place before it is used
+        GetWorkstateEvent event = new GetWorkstateEvent ();
+        EventBusFactory.getThreadPerTaskEventBus ().post (event);
+        event.getReponse (3000);
+        this.initialState = event.getCurrentWorkstate ();
+
         this.log.debug ("Schedule for ScreenLock");
         this.timer = new Timer ();
         this.timer.scheduleAtFixedRate (this,
                                         0,
                                         JobConstants.ScreenLockWatcherJobInterval +
                                                 new Random().nextInt (JobConstants.ScreenLockWatcherIntervalVariance));
+    }
+
+    /**
+     * Update the initial state if someone updates the state in or outside the application
+     * @param event The update event with the new workstate
+     */
+    @Subscribe
+    public void onUpdateWorkstateEvent (UpdateWorkstateEvent event) {  // from Display UI thread
+        this.initialState = event.getTargetWorkstate ();
     }
 
     @Override
@@ -59,20 +79,38 @@ public class ScreenLockWatcherJob extends TimerTask implements IJob {
         lastrun = new Date();
 
         this.log.debug ("Checking for ScreenLock");
-        try {
-            boolean newState = getScreenStatus ();
-            if (lockState.get () != newState) {
-                // TODO: make target workstate configurable
-                if (newState) // locked
-                    EventBusFactory.getThreadPerTaskEventBus ().post (new SetWorkstateEvent (InterfaceConstants.WorkstateTypes.AusserHaus));
-                else // not locked
-                    EventBusFactory.getThreadPerTaskEventBus ().post (new SetWorkstateEvent (InterfaceConstants.WorkstateTypes.Arbeit));
+        boolean newState = getScreenStatus ();
 
-                lockState.set (newState);
+        if (lockState.get () != newState) {
+            SettingsElement enabled = SettingsHolder.getInstance ().get (SettingsConstants.SettingsTypes.global)
+                                                                   .get ("change_workstate_on_screenlock");
+            if (enabled.getValue ().equals ("1")) {
+                SettingsElement targetWorkstate = SettingsHolder.getInstance ().get (SettingsConstants.SettingsTypes.global)
+                                                                               .get ("change_workstate_on_screenlock_target_workstate");
+
+                InterfaceConstants.WorkstateTypes targetWorkstateEnum;
+                try {
+                    targetWorkstateEnum = InterfaceConstants.WorkstateTypes.valueOf (targetWorkstate.getValue ());
+                }
+                catch (IllegalArgumentException e) {
+                    log.error ("Configuration on change_workstate_on_screenlock_target_workstate does not fit to the constants in InterfaceConstants.WorkstateTypes ");
+                    targetWorkstateEnum = InterfaceConstants.WorkstateTypes.AusserHaus;
+                }
+                log.debug ("Screen lock state change");
+                log.debug (String.format ("Screen lock state change to '%b' (locked state: '%s' | not-locked state: '%s')",
+                                          newState,
+                                          targetWorkstateEnum.toString (),
+                                          this.initialState.toString ()));
+                if (newState) {
+                    // locked
+                    EventBusFactory.getThreadPerTaskEventBus ().post (new SetWorkstateEvent (targetWorkstateEnum)); // will also update this.initialState through event
+                }
+                else {
+                    // not locked
+                    EventBusFactory.getThreadPerTaskEventBus ().post (new SetWorkstateEvent (this.initialState)); // will also update this.initialState through event
+                }
             }
-
-        } catch (Exception e) {
-            log.error (e);
+            lockState.set (newState);
         }
     }
 
@@ -96,9 +134,8 @@ public class ScreenLockWatcherJob extends TimerTask implements IJob {
     /**
      *
      * @return true if workstation screen is locked
-     * @throws Exception
      */
-    public boolean getScreenStatus() throws Exception {
+    private boolean getScreenStatus()  {
         int DESKTOP_SWITCHDESKTOP = 256;
         int hwnd = -1;
         int ret = -1;
@@ -117,7 +154,8 @@ public class ScreenLockWatcherJob extends TimerTask implements IJob {
                 return false;
             }
         } else {
-            throw new Exception ("ADA_Screenlock: could not get Desktop object");
+            log.error ("ADA_Screenlock: could not get Desktop object");
+            return this.lockState.get ();
         }
     }
 

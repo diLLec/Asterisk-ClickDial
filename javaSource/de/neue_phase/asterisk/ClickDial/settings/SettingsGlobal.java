@@ -1,8 +1,11 @@
 package de.neue_phase.asterisk.ClickDial.settings;
 
+import de.neue_phase.asterisk.ClickDial.constants.InterfaceConstants;
 import org.eclipse.swt.widgets.Display;
 
 import de.neue_phase.asterisk.ClickDial.constants.SettingsConstants;
+
+import java.util.Arrays;
 
 /**
  * The Global settings class
@@ -61,6 +64,14 @@ public class SettingsGlobal extends SettingsAbstractMaster {
         tmp = new SettingsElement("text_selection_call_hk", "Hotkey for dial currently selected text", "STRG+A", SettingsConstants.SettingsElementType.dropdown);
         tmp.registerSpecificSetting("dropdown_values", new String[] {"STRG+A", "STRG+D" } );
         settings.put(tmp.getName(), tmp);
+
+		tmp = new SettingsElement("change_workstate_on_screenlock", "Change workstate on screenlock", "1", SettingsConstants.SettingsElementType.checkbox);
+		settings.put(tmp.getName(), tmp);
+
+		tmp = new SettingsElement("change_workstate_on_screenlock_target_workstate", "Target workstate on screenlock",
+								  InterfaceConstants.WorkstateTypes.Arbeit.name (), SettingsConstants.SettingsElementType.dropdown);
+		tmp.registerSpecificSetting("dropdown_values", InterfaceConstants.enumToStringArray (InterfaceConstants.WorkstateTypes.class) );
+		settings.put(tmp.getName(), tmp);
 	}
 	
 	/** 

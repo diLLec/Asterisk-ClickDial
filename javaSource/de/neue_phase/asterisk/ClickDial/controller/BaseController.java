@@ -100,75 +100,21 @@ public class BaseController {
 		return mainDisplay;
 	}
 
-	@Subscribe
-	public void onServiceInsufficientAuthDataEvent (ManagerInsufficientAuthDataEvent event) {
-		event.setResponse ((ExtractAsteriskManagerInterfaceAuthData) onServiceInsufficientAuthDataEvent (event.getType (), event.getAuthTry ()));
-	}
-
-	@Subscribe
-	public void onServiceInsufficientAuthDataEvent (WebserviceInsufficientAuthDataEvent event) {
-        event.setResponse ((ExtractWebserviceAuthData) onServiceInsufficientAuthDataEvent(event.getType (), event.getAuthTry ()));
-	}
-
-    /**
-     * Implementation of the auth data provider
-     * @param type Service Interface who asks for data
-     * @param tryCount the try (0 == first try - give cached data)
-     * @return the auth extract object
+	/**
+	 *
+	 * @return returns the currently set auth data
      */
-	private  ISettingsExtractModel onServiceInsufficientAuthDataEvent (ServiceInterfaceTypes type, Integer tryCount) {
-		/* check from where the setting request is sent */
-		log.debug("startSettingsProducer from " + type.toString());
-
-		switch (type) {
-			case Webservice: {
-				if (tryCount == 0 && keystore.hasWebserviceAuthData ())
-					return keystore.getWebserviceAuthData();
-				else {
-					/* start the settings dialog */
-					log.debug ("Starting the settings dialog, since the webservice connections lacks auth data");
-
-					String message;
-					if (tryCount == 0) {
-						message = "Please enter Username/Password.";
-					}
-					else if (tryCount == 1 && keystore.hasWebserviceAuthData () && keystore.areCredentialsAcknowledged ())
-						message = "Password Cache expired - Please renew Username/Password.";
-					else
-						message = "Username/Password mismatch. Please enter valid Credentials.";
-
-					String[] authData = WebserviceAuthDialog.getAuthentication (message);
-
-					if (authData != null && keystore.isWriteable ()) {
-						keystore.setWebserviceAuthData (authData[0], authData[1]);
-						return keystore.getWebserviceAuthData();
-					} else
-						return null;
-				}
-			}
-
-			case AsteriskManagerInterface: {
-
-				if (tryCount == 0)
-					return ((SettingsAsterisk) SettingsHolder.getInstance ().get (SettingsTypes.asterisk)).getAsteriskAuthData ();
-				else {
-                    try {
-                        TrayIconController tray = ((TrayIconController) this.getController (ControllerTypes.TrayIcon));
-                        tray.popupError ("Authentication Data for Asterisk Manager Interface was incorrect.\n" +
-                                                "Connection will probably be restored in next AutoConfig run.");
-                    }
-                    catch (UnknownObjectException e) {
-                        log.error ("Could not get TrayController to popup balloon information - it was not registered?", e);
-                    }
-
-					return null;
-				}
-			}
-		}
-
-		return null;
+	public synchronized ExtractWebserviceAuthData getWebserviceAuthData () {
+		return (ExtractWebserviceAuthData) keystore.getWebserviceAuthData();
 	}
 
+	/**
+	 *
+	 * @return returns the currently set auth data
+	 */
+	public synchronized ExtractAsteriskManagerInterfaceAuthData getManagerAuthData () {
+		return (ExtractAsteriskManagerInterfaceAuthData) ((SettingsAsterisk) SettingsHolder.getInstance ().get (SettingsTypes.asterisk)).getAsteriskAuthData ();
+	}
 
 	/**
 	 * acknowledge if a provided knowledge data has
@@ -180,20 +126,28 @@ public class BaseController {
 	}
 
 	@Subscribe
-	public void onProblemEvent(ManagerProblemEvent event) {
-		event.setResponse ( onProblemEvent (event.getType (), event.getProblemType (), event.getProblemTry ()) );
+	public void onProblemEvent (ManagerProblemEvent event) {
+		event.setResponse ( onProblemEvent (event.getType (), event.getProblemType ()) );
     }
 
     @Subscribe
-    public void onProblemEvent(WebserviceProblemEvent event) {
-        event.setResponse ( onProblemEvent (event.getType (), event.getProblemType (), event.getProblemTry ()) );
+    public void onProblemEvent (WebserviceProblemEvent event) {
+		log.debug("Got WebserviceProblemEvent event.");
+        event.setResponse ( onProblemEvent (event.getType (), event.getProblemType ()) );
     }
 
-    private Boolean onProblemEvent (ServiceInterfaceTypes type, ServiceInterfaceProblems problem, Integer tryCount) {
+	/**
+	 * triggered if there are any problems inside a service interface of the application where the user needs to decide what to do
+	 * or to provide data
+	 * @param type type of the service
+	 * @param problem Type of the problem
+	 * @return true = solved | false = not solved
+     */
+    private Boolean onProblemEvent (ServiceInterfaceTypes type, ServiceInterfaceProblems problem) {
 		log.debug("onProblemEvent from " + type.toString() + " with problem " + problem.toString ());
 		if (type == ServiceInterfaceTypes.Webservice) {
 			switch (problem) {
-				case ConnectionProblem:
+				case ConnectionProblem: {
 					UserActionBox ua = new UserActionBox ("Asterisk Manager Webinterface Connection has failed.\n" +
 														  "Closing Application",
 														  InterfaceConstants.SettingsImages.error,
@@ -201,26 +155,60 @@ public class BaseController {
 					ua.addButton ("retry", 1);
 					ua.addButton ("quit", 1);
 					switch (ua.open ()) {
-						case "retry": return true;
-						case "quit": this.bailOut (); return false;
+						case "retry":
+							return true;
+						case "quit":
+							this.bailOut ();
+							return false;
 					}
+				}
+				case AuthenticationDataExpired: {
+					/* start the settings dialog */
+					log.debug ("Starting the settings dialog, since the webservice connections lacks auth data");
+
+					String message;
+					if (keystore.hasWebserviceAuthData () && keystore.areCredentialsAcknowledged ())
+						message = "Password Cache expired - Please renew Username/Password.";
+					else
+						message = "Username/Password mismatch. Please enter valid Credentials.";
+
+					String[] authData = WebserviceAuthDialog.getAuthentication (message);
+					if (authData != null && keystore.isWriteable ()) {
+						keystore.setWebserviceAuthData (authData[0], authData[1]);
+						return true;
+					}
+					else {
+						return false;
+					}
+				}
 			}
 		}
 
 		if (type == ServiceInterfaceTypes.AsteriskManagerInterface) {
 			switch (problem) {
-				case ConnectionProblem:
-                    try {
-                        TrayIconController tray = ((TrayIconController) this.getController (ControllerTypes.TrayIcon));
-                        tray.popupError ("Asterisk Manager Interface Connection has disconnected/failed.\n" +
-                                                 "Application will not be able to signal incoming calls.");
-                    }
-                    catch (UnknownObjectException e) {
-                        log.error ("Could not get TrayController to popup balloon information - it was not registered?", e);
-                    }
+				case ConnectionProblem: {
+					try {
+						TrayIconController tray = ((TrayIconController) this.getController (ControllerTypes.TrayIcon));
+						tray.popupError ("Asterisk Manager Interface Connection has disconnected/failed.\n" +
+												 "Application will not be able to signal incoming calls.");
+					} catch (UnknownObjectException e) {
+						log.error ("Could not get TrayController to popup balloon information - it was not registered?", e);
+					}
 
 					return true;
+				}
 
+				case AuthenticationDataExpired: {
+					try {
+						TrayIconController tray = ((TrayIconController) this.getController (ControllerTypes.TrayIcon));
+						tray.popupError ("Authentication Data for Asterisk Manager Interface was incorrect.\n" +
+												 "Connection will probably be restored in next AutoConfig run.");
+					} catch (UnknownObjectException e) {
+						log.error ("Could not get TrayController to popup balloon information - it was not registered?", e);
+					}
+
+					return true;
+				}
 			}
 		}
 

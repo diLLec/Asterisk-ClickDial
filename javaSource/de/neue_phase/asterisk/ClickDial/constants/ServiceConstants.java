@@ -18,5 +18,11 @@ public class ServiceConstants {
     public static final Integer WebserviceSocketTimeout = 2000;
 
     /** on which interval the connection is checked */
-    public static final Integer AsteriskManagerConnectionCheckInterval = 500;
+    public static final Integer AsteriskManagerConnectionCheckInterval = 5500;
+
+    /** on which interval the connection is checked */
+    public static final Integer AsteriskManagerPingTimeout = 3000;
+
+    /** defines how often a ping is send out during connection checks */
+    public static final Integer AsteriskManagerPingInterval = 5; // every 5 check intervals (AsteriskManagerConnectionCheckInterval * 5)
 }

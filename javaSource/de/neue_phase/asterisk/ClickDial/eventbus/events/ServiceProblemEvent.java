@@ -4,13 +4,11 @@ import de.neue_phase.asterisk.ClickDial.constants.ControllerConstants;
 
 class ServiceProblemEvent<T> extends AsyncCallWaitEvent<T> {
     private ControllerConstants.ServiceInterfaceProblems problemType;
-    private Integer problemTry;
     private ControllerConstants.ServiceInterfaceTypes type;
 
 
-    public ServiceProblemEvent (ControllerConstants.ServiceInterfaceTypes type, ControllerConstants.ServiceInterfaceProblems problemType, Integer problemTry) {
+    public ServiceProblemEvent (ControllerConstants.ServiceInterfaceTypes type, ControllerConstants.ServiceInterfaceProblems problemType) {
         this.problemType = problemType;
-        this.problemTry = problemTry;
         this.type = type;
     }
 
@@ -22,7 +20,4 @@ class ServiceProblemEvent<T> extends AsyncCallWaitEvent<T> {
         return problemType;
     }
 
-    public Integer getProblemTry () {
-        return problemTry;
-    }
 }

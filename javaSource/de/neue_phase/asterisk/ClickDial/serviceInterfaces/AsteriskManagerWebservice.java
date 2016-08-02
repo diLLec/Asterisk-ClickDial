@@ -28,15 +28,13 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
-public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
+public class AsteriskManagerWebservice extends TimerTask implements IServiceInterface {
 
     private enum ConnectionState {
         NOT_CONNECTED, // no connection possible
@@ -57,10 +55,11 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
     private String serviceURL;
     private String sessionId;
 
-    private Integer authenticationTry   = 0;
     private Integer problemTry          = 0;
     private ControllerConstants.ServiceInterfaceTypes type = ControllerConstants.ServiceInterfaceTypes.Webservice;
     protected final Logger log = Logger.getLogger(this.getClass());
+
+    private Timer timer                     = null;
 
     /**
      *
@@ -84,24 +83,24 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
      */
     @Override
     public void run () {
+        this.checkAndActBasedOnConnectionState();
+    }
 
-        // this is done on startup
-        this.authenticate();
-        authenticationDone.countDown ();
-
-        do {
-            if (conState.get () == ConnectionState.CONNECTED) {
-                problemTriggered.set (true);
-                this.authenticate(); // blocks
-            }
-            else if (conState.get() == ConnectionState.NOT_CONNECTED) {
-                problemTriggered.set(true);
-                triggerServiceInterfaceProblem (ServiceInterfaceProblems.ConnectionProblem); // blocks
-            }
-            try {
-                TimeUnit.SECONDS.sleep (2);
-            } catch (InterruptedException e) { log.trace ("Interrupted sleep - wakeup from outside.");}
-        } while (!shutdownInterface.get ());
+    /**
+     * this will check the connection state, and if it is not authenticated trigger problem events, which will
+     * present a dialog to the user.
+     */
+    private void checkAndActBasedOnConnectionState () {
+        log.trace (String.format("'%s' connection state: '%s'", this.getClass ().getCanonicalName (),
+                                                                conState.toString ()));
+        if (conState.get () == ConnectionState.CONNECTED) {
+            triggerServiceInterfaceProblem (ServiceInterfaceProblems.AuthenticationDataExpired); // blocks
+            this.authenticate();
+        }
+        else if (conState.get() == ConnectionState.NOT_CONNECTED) {
+            triggerServiceInterfaceProblem (ServiceInterfaceProblems.ConnectionProblem); // blocks
+            this.authenticate();
+        }
     }
 
     /**
@@ -114,11 +113,18 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
         if (!urlValidator.isValid(this.serviceURL))
             throw new InitException ("Invalid service URL specified.");
 
-        log.debug ("Starting interfaceCheckThread");
-        interfaceCheckThread = new Thread(this); // runs AsteriskManagerWebservice.run()
-        interfaceCheckThread.start ();
+        // initial connect
+        (new Thread (() -> {
+            authenticate(); // authenticate with saved data
 
-        // wait for authentication to happen
+            while (conState.get() != ConnectionState.AUTHENTICATED) {
+                // authenticate until the webservice is ConnectionState.AUTHENTICATED
+                checkAndActBasedOnConnectionState ();
+            }
+
+            authenticationDone.countDown ();
+        })).start();
+
 
         log.debug ("Waiting for authenticate to pass");
         try {
@@ -126,6 +132,11 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
         } catch (InterruptedException e) {
             log.error ("Huh - Latch wait has been interrupted.", e);
         }
+        log.debug ("Authentication passed.");
+
+        // schedule the connection checker.
+        timer = new Timer();
+        timer.scheduleAtFixedRate (this, 0, ServiceConstants.WebserviceConnectionCheckInterval);
 
         // there is no feedback loop to this, if the user quits the application
         // see BaseController.onProblemEvent() -> "quit"
@@ -153,23 +164,14 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
      * new authentication data and try to contact webservice for authorization
      */
     private void authenticate () {
-        do {
-            WebserviceInsufficientAuthDataEvent event = new WebserviceInsufficientAuthDataEvent (this.type,
-                                                                                                 authenticationTry);
-            EventBusFactory.getDisplayThreadEventBus ().post (event);
-            ExtractWebserviceAuthData authData = event.getReponse (3000);
+        ExtractWebserviceAuthData authData = BaseController.getInstance ().getWebserviceAuthData ();
 
-            if (authData != null) {
-                this.authenticateAction (authData.getUsername (), authData.getPassword ());
-                if (conState.get () == ConnectionState.AUTHENTICATED) {
-                    EventBusFactory.getDisplayThreadEventBus ().post (new ServiceAcknowledgeAuthDataEvent ());
-                    this.authenticationTry = 0;
-                }
+        if (authData != null) {
+            this.authenticateAction (authData.getUsername (), authData.getPassword ());
+            if (conState.get () == ConnectionState.AUTHENTICATED) {
+                EventBusFactory.getDisplayThreadEventBus ().post (new ServiceAcknowledgeAuthDataEvent ());
             }
-            authenticationTry += 1;
-        } while (!this.isAuthenticated () && authenticationTry <= 10);
-
-
+        }
     }
 
     /**
@@ -180,7 +182,6 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
     private void updateConnectionState (ConnectionState changeTo) {
         if (this.conState.get () != changeTo) {
             this.conState.set (changeTo);
-            interfaceCheckThread.interrupt (); // trigger interfaceCheckThread, so that it can check if we need to reauth or something
         }
     }
 
@@ -191,8 +192,9 @@ public class AsteriskManagerWebservice implements IServiceInterface, Runnable {
      * @return problem solved (true), or not (false)
      */
     private Boolean triggerServiceInterfaceProblem (ControllerConstants.ServiceInterfaceProblems problemType) {
-        WebserviceProblemEvent event = new WebserviceProblemEvent (this.type, problemType, problemTry++);
-        EventBusFactory.getSyncEventBus ().post (event); // blocks
+        log.debug("Sending WebserviceProblemEvent event.");
+        WebserviceProblemEvent event = new WebserviceProblemEvent (this.type, problemType);
+        EventBusFactory.getDisplayThreadEventBus ().post (event); // blocks
         return event.getReponse (3000);
     }
 

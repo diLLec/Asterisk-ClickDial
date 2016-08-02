@@ -87,7 +87,7 @@ public class Bootstrap {
      */
 	private void run(Display display) {
 
-		EventBusFactory.instanciateDisplayEventBus(display);
+		EventBusFactory.instantiateDisplayEventBus(display);
 		log.debug("Starting the instantiation thread.");
 
 		new Thread (() -> {
@@ -113,7 +113,6 @@ public class Bootstrap {
              */
             EventBusFactory.getDisplayThreadEventBus ().register (bC);
 
-
             splash.setDescribingText("Connecting Service Interfaces ...");
             bC.initKeystore ();
 
@@ -134,7 +133,7 @@ public class Bootstrap {
             splash.setDescribingText("Starting WorkstateGetterJob ...");
             try {
                 IJob job = JobFactory.createJob (ControllerConstants.JobTypes.WorkstateGetter);
-                EventBusFactory.getThreadPerTaskEventBus ().register (job);
+                EventBusFactory.getDisplayThreadEventBus ().register (job);
                 bC.bringUp (job, BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
             } catch (JobCreationException e) {
                 log.error ("Unable to spawn WorkstateGetterJob", e);
@@ -143,6 +142,7 @@ public class Bootstrap {
             splash.setDescribingText("Starting ScreenLockWatcherJob ...");
             try {
                 IJob job = JobFactory.createJob (ControllerConstants.JobTypes.ScreenLockWatcherJob);
+                EventBusFactory.getDisplayThreadEventBus ().register (job);
                 bC.bringUp (job, BaseController.BRINGUP_SHUTDOWN_IF_FAIL);
             } catch (JobCreationException e) {
                 log.error ("Unable to spawn ScreenLockWatcherJob", e);

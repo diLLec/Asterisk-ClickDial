@@ -66,7 +66,7 @@ public class WorkstateGetterJob extends TimerTask implements IJob, Runnable {
      * @param event The event
      */
     @Subscribe
-    synchronized public void onSetWorkstateEvent (SetWorkstateEvent event) {
+    synchronized public void onUpdateWorkstateEvent (UpdateWorkstateEvent event) { // from Display UI thread
         log.debug ("WorkstateGetterJob: Updated workstate from GUI.");
         this.currentWorkstate = event.getTargetWorkstate ();
     }
@@ -80,8 +80,7 @@ public class WorkstateGetterJob extends TimerTask implements IJob, Runnable {
         }
         else if  (newWorkstate != currentWorkstate) {
             log.info ("Workstate changed outside of ClickDial Application (to: '"+newWorkstate.toString ()+"')");
-            EventBusFactory.getDisplayThreadEventBus ().post (new UpdateWorkstateEvent (newWorkstate));
-            currentWorkstate = newWorkstate;
+            EventBusFactory.getDisplayThreadEventBus ().post (new UpdateWorkstateEvent (newWorkstate)); // will also update my own currentWorkstate
         }
     }
 }

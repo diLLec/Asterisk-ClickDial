@@ -12,7 +12,7 @@ import org.eclipse.swt.widgets.Display;
  *  
  */
 
-public class InterfaceConstants {
+public class InterfaceConstants extends ConstantsBase {
 
 	/**
 	 * the official used name for this program
@@ -89,19 +89,16 @@ public class InterfaceConstants {
 	}
 	
 	public static final Integer	MaxCallWindowInstances		= 10;
-	
-	
+
 	/**
 	 * the path where SettingsTypeIcons are searched
 	 * @see de.neue_phase.asterisk.ClickDial.widgets.SettingsWindow
 	 */
-	
 	public static final String SettingsTypeIcons_Path 	= "lib\\icons\\";
 	public static final String SettingsTypeIcons_Suffix 	= ".png";
 	public static final String SettingsTreeIconPath 	= SettingsTypeIcons_Path + "16\\";
 	public static final String SettingsTreeIconExpander = SettingsTreeIconPath   + "arrow.png";
 
-	
 	/**
 	 * Tray Icon
 	 */

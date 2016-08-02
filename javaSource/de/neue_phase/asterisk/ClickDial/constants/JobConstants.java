@@ -13,14 +13,14 @@ public class JobConstants {
     public static final Integer	AutoConfigJobIntervalVariance = 5000; // 5 seconds variant
 
     /** The interval in which the WorkstateGetter will check for new Workstate data */
-    public static final Integer	WorkstateGetterJobInterval = 50000; // 5 seconds // TODO: set to 5000 milis
+    public static final Integer	WorkstateGetterJobInterval = 2000; // 2 seconds
 
     /** The variance which will be added to the Interval above to prevent peaks on the Webservice */
     public static final Integer	WorkstateGetterIntervalVariance = 1000; // 1 seconds variant
 
     /** The variance which will be added to the Interval above to prevent peaks on the Webservice */
-    public static final Integer	ScreenLockWatcherIntervalVariance = 50; // 50 millis
+    public static final Integer	ScreenLockWatcherIntervalVariance = 200; // 20 millis
 
     /** The variance which will be added to the Interval above to prevent peaks on the Webservice */
-    public static final Integer	ScreenLockWatcherJobInterval = 50000; // 5 secs // TODO: set to 500 milis
+    public static final Integer	ScreenLockWatcherJobInterval = 5500; // 500 milis
 }

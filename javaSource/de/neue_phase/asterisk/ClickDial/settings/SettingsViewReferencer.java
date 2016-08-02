@@ -114,13 +114,13 @@ public class SettingsViewReferencer {
 		else if (settingObject instanceof Text)
 			re = ((Text) settingObject).getText();
 		else if (settingObject instanceof Spinner)
-			re = new Integer( ((Spinner) settingObject).getSelection() ).toString();
+			re = Integer.toString (((Spinner) settingObject).getSelection ());
 		else if (settingObject instanceof Combo)
 			re = ((Combo) settingObject).getItem(((Combo) settingObject).getSelectionIndex());
 		else
 			System.out.println("getConfigurationString: unknown");
 
-		return new String (re);
+		return re;
 		
 	}
 	

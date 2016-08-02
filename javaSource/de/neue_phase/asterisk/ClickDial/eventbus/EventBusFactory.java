@@ -11,20 +11,34 @@ public class EventBusFactory{
                                                                                   new ExceptionHandler());
     private final static EventBus syncEventBus = new EventBus (new ExceptionHandler());
 
-    public final static void instanciateDisplayEventBus (Display disp) {
-        displayThreadEventBus = new AsyncEventBus (new DisplayThreadSyncExecutor (disp),
+    /**
+     * instantiate the sync event bus, so that events can be executed syncronously in UI thread
+     * @param display The main display of the application
+     */
+    public static void instantiateDisplayEventBus (Display display) {
+        displayThreadEventBus = new AsyncEventBus (new DisplayThreadSyncExecutor (display),
                                                    new ExceptionHandler());
     }
 
+    /**
+     * this will return an eventbus which will _synchronously_ execute the event in the swt UI thread
+     * @return EventBus
+     */
     public static AsyncEventBus getDisplayThreadEventBus () {
         return displayThreadEventBus;
     }
 
+    /**
+     * This will return an event bus, which will execute the event in a new thread
+     * @return EventBus
+     */
     public static AsyncEventBus getThreadPerTaskEventBus () {
         return threadPerTaskEventBus;
     }
 
-    public static EventBus getSyncEventBus () {
-        return syncEventBus;
-    }
+    /**
+     * This will return a synchronous non-swt UI thread
+     * @return EventBus
+     */
+    public static EventBus getSyncEventBus () { return syncEventBus; }
 }

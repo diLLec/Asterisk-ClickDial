@@ -42,7 +42,7 @@ public class SettingsConstants {
 	 * @see de.neue_phase.asterisk.ClickDial.widgets.SettingsWindow
 	 */
 	
-	public static final int SettingsWindow_heigth = 300;
+	public static final int SettingsWindow_heigth = 500;
 	public static final int SettingsWindow_width  = 1000;
 	
 	/**
